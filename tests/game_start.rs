@@ -1,8 +1,8 @@
-use rust_sc2::prelude::*;
 use rebicycler::ReBiCycler;
+use rust_sc2::prelude::*;
 
-
-fn main() -> SC2Result<()> {
+#[test]
+fn assembles_initial_state_properly() {
     let mut bot = ReBiCycler::new();
     let options = LaunchOptions::<'_>{
         realtime: false,
@@ -19,5 +19,6 @@ fn main() -> SC2Result<()> {
         ),
         "AutomatonLE", // Map name
         options,
-    )
+    ).unwrap();
+    
 }
