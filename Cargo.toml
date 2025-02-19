@@ -1,0 +1,7 @@
+[package]
+name = "rebicycler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust-sc2 = { git = "https://github.com/UltraMachine/rust-sc2" }
