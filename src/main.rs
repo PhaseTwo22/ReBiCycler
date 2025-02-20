@@ -14,7 +14,7 @@ fn main() -> SC2Result<()> {
         &mut bot,
         Computer::new(
             Race::Random,
-            Difficulty::VeryEasy,
+            Difficulty::VeryHard,
             None, // AI Build (random here)
         ),
         "AutomatonLE", // Map name
