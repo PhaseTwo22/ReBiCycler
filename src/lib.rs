@@ -1,5 +1,5 @@
 use base_manager::BaseManager;
-use build_order::*;
+use build_order::{BuildCondition, BuildOrderAction, BuildOrderManager};
 use errors::UnitEmploymentError;
 use rust_sc2::prelude::*;
 use std::fmt::Debug;
@@ -11,7 +11,7 @@ mod siting;
 
 const CHRONOBOOST_COST: u32 = 50;
 
-pub fn get_options<'a>() -> LaunchOptions<'a> {
+#[must_use] pub fn get_options<'a>() -> LaunchOptions<'a> {
     LaunchOptions::<'a> {
         realtime: false,
         save_replay_as: Some("/home/andrew/Rust/ReBiCycler/replays/test"),
@@ -19,37 +19,37 @@ pub fn get_options<'a>() -> LaunchOptions<'a> {
     }
 }
 
-pub fn distance_squared(a: &Point2, b: &Point2) -> f32 {
+#[must_use] pub fn distance_squared(a: &Point2, b: &Point2) -> f32 {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
 
-    dx * dx + dy * dy
+    dx.mul_add(dx, dy * dy)
 }
 
-pub fn closest_index(target: Point2, population: Vec<Point2>) -> Option<usize> {
+#[must_use] pub fn closest_index(target: Point2, population: Vec<Point2>) -> Option<usize> {
     population
         .iter()
-        .map(|pop| distance_squared(&target, &pop))
+        .map(|pop| distance_squared(&target, pop))
         .enumerate()
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(i, _)| i)
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Tag {
     tag: u64,
     type_id: UnitTypeId,
 }
 impl Tag {
-    pub fn from_unit(unit: &Unit) -> Self {
-        Tag {
+    #[must_use] pub fn from_unit(unit: &Unit) -> Self {
+        Self {
             tag: unit.tag(),
             type_id: unit.type_id(),
         }
     }
 
-    pub fn default() -> Tag {
-        Tag {
+    #[must_use] pub const fn default() -> Self {
+        Self {
             tag: 0,
             type_id: UnitTypeId::NotAUnit,
         }
@@ -70,7 +70,7 @@ impl Player for ReBiCycler {
     fn on_start(&mut self) -> SC2Result<()> {
         self.bom = BuildOrderManager::new();
 
-        for worker in self.units.my.workers.clone().iter() {
+        for worker in &self.units.my.workers.clone() {
             self.reassign_worker_to_nearest_base(worker)
                 .expect("No bases at game start?!");
         }
@@ -137,15 +137,14 @@ impl Player for ReBiCycler {
                             unit_tag,
                             alliance
                         );
-                        let unit_tag = Tag::from_unit(unit).clone();
+                        let unit_tag = Tag::from_unit(unit);
                         if unit.is_structure() && unit.is_mine() {
                             self.base_managers
                                 .iter_mut()
-                                .map(|bm| bm.destroy_building_by_tag(unit_tag.clone()))
-                                .any(|b| b);
+                                .any(|bm| bm.destroy_building_by_tag(unit_tag.clone()));
                         };
                     }
-                    None => println!("Unknown unit destroyed: {:?}", unit_tag),
+                    None => println!("Unknown unit destroyed: {unit_tag:?}"),
                 };
             }
             Event::ConstructionStarted(building_tag) => {
@@ -161,7 +160,7 @@ impl Player for ReBiCycler {
             }
             Event::RandomRaceDetected(race) => {
                 if self.enemy_race.is_random() {
-                    println!("This cheeser is {:?}!", race)
+                    println!("This cheeser is {race:?}!");
                 };
             }
         }
@@ -174,7 +173,7 @@ impl Player for ReBiCycler {
 }
 
 impl ReBiCycler {
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             /* initializing fields */
             bom: BuildOrderManager::new(),
@@ -198,7 +197,7 @@ impl ReBiCycler {
             bm.add_building(building);
         }
 
-        self.base_managers.push(bm)
+        self.base_managers.push(bm);
     }
 
     pub fn reassign_worker_to_nearest_base(
@@ -209,9 +208,7 @@ impl ReBiCycler {
         if let Some(nn) = nearest_nexus {
             let nn_tag = Tag::from_unit(nn);
             self.base_managers
-                .iter_mut()
-                .filter(|bm| bm.nexus == Some(nn_tag.clone()))
-                .next()
+                .iter_mut().find(|bm| bm.nexus == Some(nn_tag.clone()))
                 .map_or(
                     Err(UnitEmploymentError("No base managers exist!".to_string())),
                     |bm| bm.assign_unit(worker),
@@ -235,7 +232,7 @@ impl ReBiCycler {
 
     fn observe(&mut self) {
         self.state.action_errors.iter().for_each(|error| {
-            println!("Action failed: {:?}", error);
+            println!("Action failed: {error:?}");
         });
     }
 
@@ -262,8 +259,7 @@ impl ReBiCycler {
                 .my
                 .townhalls
                 .iter()
-                .map(|n| n.energy().unwrap_or(0) >= CHRONOBOOST_COST)
-                .any(|b| b),
+                .any(|n| n.energy().unwrap_or(0) >= CHRONOBOOST_COST),
             BuildOrderAction::Construct(building) => {
                 self.can_afford(*building, false) && self.supply_workers > 0
             }
@@ -298,12 +294,12 @@ impl ReBiCycler {
                 continue;
             }
             self.attempt_build_action(&policy.action);
-            println!("Attempted Policy Action! {}", policy);
+            println!("Attempted Policy Action! {policy}");
             attempted_policies += 1;
         }
 
         if attempted_policies == 0 {
-            println!("No policies attempted")
+            println!("No policies attempted");
         };
     }
 
@@ -328,19 +324,19 @@ impl ReBiCycler {
     fn attempt_build_action(&self, action: &BuildOrderAction) {
         match action {
             BuildOrderAction::Construct(unit_type) => {
-                self.build(unit_type, self.start_center.towards(self.enemy_start, 2.0))
+                self.build(unit_type, self.start_center.towards(self.enemy_start, 2.0));
             }
-            BuildOrderAction::Train(unit_type, _) => self.train(unit_type.clone()),
-            BuildOrderAction::Chrono(ability) => self.chrono_boost(ability.clone()),
+            BuildOrderAction::Train(unit_type, _) => self.train(*unit_type),
+            BuildOrderAction::Chrono(ability) => self.chrono_boost(*ability),
             BuildOrderAction::Research(upgrade, researcher, ability) => {
-                self.research(researcher.clone(), upgrade.clone(), ability.clone())
+                self.research(*researcher, *upgrade, *ability);
             }
         }
     }
 
     fn build(&self, structure_type: &UnitTypeId, position: Point2) {
         let builder = self.units.my.workers.first().unwrap();
-        builder.build(structure_type.clone(), position, false);
+        builder.build(*structure_type, position, false);
     }
 
     fn train(&self, unit_type: UnitTypeId) {
@@ -359,9 +355,7 @@ impl ReBiCycler {
             .units
             .my
             .structures
-            .iter()
-            .filter(|s| s.is_using(ability))
-            .next();
+            .iter().find(|s| s.is_using(ability));
         if let (Some(nexus), Some(target)) = (energetic_nexi.next(), target) {
             nexus.command(
                 AbilityId::EffectChronoBoost,

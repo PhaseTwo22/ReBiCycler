@@ -63,8 +63,8 @@ impl fmt::Display for SitingManager {
 }
 
 impl SitingManager {
-    pub fn new(nexus: Option<Tag>, name: String, location: Point2) -> Self {
-        SitingManager {
+    pub const fn new(nexus: Option<Tag>, name: String, location: Point2) -> Self {
+        Self {
             nexus,
             location,
             name,
@@ -224,7 +224,7 @@ impl SitingManager {
         match building.type_id {
             UnitTypeId::Pylon => self.find_and_destroy_pylon(building),
             UnitTypeId::Nexus => {
-                if self.nexus == Some(building.clone()) {
+                if self.nexus == Some(building) {
                     self.nexus = None;
                     true
                 } else {
@@ -237,18 +237,14 @@ impl SitingManager {
 
     fn find_and_destroy_pylon(&mut self, pylon: Tag) -> bool {
         self.pylon_locations
-            .iter_mut()
-            .filter(|l| l.built == Some(pylon.clone()))
-            .next()
-            .is_some_and(|p| p.destroy())
+            .iter_mut().find(|l| l.built == Some(pylon.clone()))
+            .is_some_and(PylonLocation::destroy)
     }
 
     fn find_and_destroy_building(&mut self, pylon: Tag) -> bool {
         self.building_locations
-            .iter_mut()
-            .filter(|l| l.built == Some(pylon.clone()))
-            .next()
-            .is_some_and(|b| b.destroy())
+            .iter_mut().find(|l| l.built == Some(pylon.clone()))
+            .is_some_and(BuildingLocation::destroy)
     }
 
     fn has_no_structures(&self) -> bool {
@@ -258,7 +254,7 @@ impl SitingManager {
 
 impl Default for SitingManager {
     fn default() -> Self {
-        SitingManager {
+        Self {
             nexus: None,
             location: Point2::new(0.0, 0.0),
             name: "Unnamed".to_string(),

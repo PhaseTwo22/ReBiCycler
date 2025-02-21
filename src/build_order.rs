@@ -116,5 +116,5 @@ impl fmt::Display for Policy {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_build_order_manager() {}
+    const fn test_build_order_manager() {}
 }

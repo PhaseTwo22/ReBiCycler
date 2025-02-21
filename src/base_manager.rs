@@ -12,15 +12,15 @@ pub struct BaseManager {
     assimilators: Vec<Tag>,
     siting_manager: SitingManager,
 }
-impl Into<Point2> for BaseManager {
-    fn into(self) -> Point2 {
-        self.location.clone()
+impl From<BaseManager> for Point2 {
+    fn from(val: BaseManager) -> Self {
+        val.location
     }
 }
 
 impl BaseManager {
     pub fn new(nexus: Option<Tag>, name: String, location: Point2) -> Self {
-        BaseManager {
+        Self {
             nexus: nexus.clone(),
             location,
             workers: Vec::new(),
@@ -31,32 +31,32 @@ impl BaseManager {
         }
     }
 
-    pub fn nexus(&self) -> &Option<Tag> {
+    pub const fn nexus(&self) -> &Option<Tag> {
         &self.nexus
     }
 
-    pub fn workers(&self) -> &Vec<Tag> {
+    pub const fn workers(&self) -> &Vec<Tag> {
         &self.workers
     }
 
-    pub fn minerals(&self) -> &Vec<Tag> {
+    pub const fn minerals(&self) -> &Vec<Tag> {
         &self.minerals
     }
 
-    pub fn geysers(&self) -> &Vec<Tag> {
+    pub const fn geysers(&self) -> &Vec<Tag> {
         &self.geysers
     }
 
-    pub fn assimilators(&self) -> &Vec<Tag> {
+    pub const fn assimilators(&self) -> &Vec<Tag> {
         &self.assimilators
     }
 
     pub fn assign_unit(&mut self, unit: &Unit) -> Result<(), UnitEmploymentError> {
         let unit_tag = Tag::from_unit(unit);
-        println!("Assigning new unit_tag to base manager: {:?}", unit_tag);
+        println!("Assigning new unit_tag to base manager: {unit_tag:?}");
 
         if unit.is_mineral() {
-            self.minerals.push(unit_tag)
+            self.minerals.push(unit_tag);
         } else if unit.is_geyser() {
             self.geysers.push(unit_tag);
         } else {
