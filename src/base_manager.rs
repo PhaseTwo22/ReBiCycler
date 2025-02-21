@@ -10,7 +10,7 @@ pub struct BaseManager {
     minerals: Vec<Tag>,
     geysers: Vec<Tag>,
     assimilators: Vec<Tag>,
-    siting_manager: SitingManager,
+    pub siting_manager: SitingManager,
 }
 impl From<BaseManager> for Point2 {
     fn from(val: BaseManager) -> Self {
@@ -94,12 +94,9 @@ impl BaseManager {
     }
 
     pub fn add_building(&mut self, building: &Unit) -> Result<(), InvalidUnitError> {
-        if let Some(footprint) = building.building_size() {
-            self.siting_manager.add_building(
-                Tag::from_unit(building),
-                building.position(),
-                rust_sc2::geometry::Size::new(footprint, footprint),
-            )
+        if let Some(size) = building.building_size() {
+            self.siting_manager
+                .add_building(Tag::from_unit(building), building.position(), size)
         } else {
             Err(InvalidUnitError(
                 "All Protoss buildings have Some(building_size())!".to_string(),

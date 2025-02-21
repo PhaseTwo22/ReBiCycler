@@ -1,10 +1,10 @@
 use std::fmt;
 
 use crate::{errors::InvalidUnitError, Tag};
-use rust_sc2::{geometry::Size, prelude::*};
+use rust_sc2::prelude::*;
 
 const PYLON_POWER_DISTANCE: f32 = 7.0;
-struct PylonLocation {
+pub struct PylonLocation {
     location: Point2,
     built: Option<Tag>,
 }
@@ -21,18 +21,25 @@ impl PylonLocation {
         self.built = None;
         true
     }
+
+    pub fn build(&mut self, building: Tag) {
+        self.built = Some(building)
+    }
 }
 
-struct BuildingLocation {
-    location: Point2,
+pub struct BuildingLocation {
+    pub location: Point2,
     built: Option<Tag>,
     is_powered: bool,
-    size: Size,
+    size: usize,
 }
 impl BuildingLocation {
     pub fn destroy(&mut self) -> bool {
         self.built = None;
         true
+    }
+    pub fn build(&mut self, building: Tag) {
+        self.built = Some(building)
     }
 }
 
@@ -72,16 +79,50 @@ impl SitingManager {
             building_locations: Vec::new(),
         }
     }
+    pub fn get_free_building_site(&self, size: usize) -> Option<&BuildingLocation> {
+        self.building_locations
+            .iter()
+            .find(|bl| bl.size == size && bl.built.is_none())
+    }
 
-    fn find_powered_spot(&self) -> Point2 {
-        Point2::new(0.0, 0.0)
+    pub fn get_pylon_site(&self) -> Option<&PylonLocation> {
+        self.pylon_locations.first()
+    }
+
+    pub fn generic_build_location_pattern(&mut self, pylon: &PylonLocation) {
+        let _: () = [
+            pylon.location.offset(2.0, 0.0),
+            pylon.location.offset(2.0, 2.0),
+            pylon.location.offset(2.0, 2.0),
+        ]
+        .iter()
+        .map(|p| self.add_building_location(*p, 3))
+        .collect();
+    }
+
+    pub fn add_pylon_site(&mut self, location: Point2) {
+        let pl = PylonLocation {
+            location: location.round(),
+            built: None,
+        };
+        self.generic_build_location_pattern(&pl);
+        self.pylon_locations.push(pl);
+    }
+
+    fn add_building_location(&mut self, location: Point2, size: usize) {
+        self.building_locations.push(BuildingLocation {
+            location,
+            built: None,
+            is_powered: false,
+            size,
+        })
     }
 
     pub fn add_building(
         &mut self,
         building: Tag,
         location: Point2,
-        size: Size,
+        size: usize,
     ) -> Result<(), InvalidUnitError> {
         let is_powered = self
             .pylon_locations
@@ -93,10 +134,7 @@ impl SitingManager {
                 Ok(())
             }
             UnitTypeId::Pylon => {
-                self.pylon_locations.push(PylonLocation {
-                    location,
-                    built: Some(building),
-                });
+                self.add_pylon_site(location);
                 Ok(())
             }
             UnitTypeId::Assimilator => {
@@ -237,13 +275,15 @@ impl SitingManager {
 
     fn find_and_destroy_pylon(&mut self, pylon: Tag) -> bool {
         self.pylon_locations
-            .iter_mut().find(|l| l.built == Some(pylon.clone()))
+            .iter_mut()
+            .find(|l| l.built == Some(pylon.clone()))
             .is_some_and(PylonLocation::destroy)
     }
 
     fn find_and_destroy_building(&mut self, pylon: Tag) -> bool {
         self.building_locations
-            .iter_mut().find(|l| l.built == Some(pylon.clone()))
+            .iter_mut()
+            .find(|l| l.built == Some(pylon.clone()))
             .is_some_and(BuildingLocation::destroy)
     }
 

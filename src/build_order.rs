@@ -20,15 +20,15 @@ impl BuildOrderManager {
         Self {
             build_order: vec![
                 BuildOrderComponent {
-                    prereq: BuildCondition::Supply(14),
+                    prereq: BuildCondition::SupplyAtLeast(14),
                     action: BuildOrderAction::Construct(UnitTypeId::Pylon),
                 },
                 BuildOrderComponent {
-                    prereq: BuildCondition::Structure(UnitTypeId::Pylon),
+                    prereq: BuildCondition::StructureComplete(UnitTypeId::Pylon),
                     action: BuildOrderAction::Construct(UnitTypeId::Gateway),
                 },
                 BuildOrderComponent {
-                    prereq: BuildCondition::Tech(UpgradeId::ProtossShieldsLevel2),
+                    prereq: BuildCondition::TechComplete(UpgradeId::ProtossShieldsLevel2),
                     action: BuildOrderAction::Research(
                         UpgradeId::ProtossShieldsLevel3,
                         UnitTypeId::Forge,
@@ -40,26 +40,26 @@ impl BuildOrderManager {
                 Policy {
                     action: BuildOrderAction::Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
                     active: true,
-                    condition: BuildCondition::Supply(22),
+                    condition: BuildCondition::LessThanCount(UnitTypeId::Probe, 22),
                 },
-                Policy {
-                    action: BuildOrderAction::Train(
-                        UnitTypeId::Zealot,
-                        AbilityId::GatewayTrainZealot,
-                    ),
-                    active: true,
-                    condition: BuildCondition::Supply(22),
-                },
-                Policy {
-                    action: BuildOrderAction::Chrono(AbilityId::GatewayTrainZealot),
-                    active: true,
-                    condition: BuildCondition::Count(UnitTypeId::Zealot, 20),
-                },
-                Policy {
-                    action: BuildOrderAction::Construct(UnitTypeId::Pylon),
-                    active: true,
-                    condition: BuildCondition::SupplyLeft(4),
-                },
+                // Policy {
+                //     action: BuildOrderAction::Train(
+                //         UnitTypeId::Zealot,
+                //         AbilityId::GatewayTrainZealot,
+                //     ),
+                //     active: true,
+                //     condition: BuildCondition::SupplyAtLeast(22),
+                // },
+                // Policy {
+                //     action: BuildOrderAction::Chrono(AbilityId::GatewayTrainZealot),
+                //     active: true,
+                //     condition: BuildCondition::LessThanCount(UnitTypeId::Zealot, 20),
+                // },
+                // Policy {
+                //     action: BuildOrderAction::Construct(UnitTypeId::Pylon),
+                //     active: true,
+                //     condition: BuildCondition::SupplyLeft(4),
+                // },
             ],
         }
     }
@@ -79,11 +79,12 @@ impl BuildOrderManager {
 
 #[derive(Debug)]
 pub enum BuildCondition {
-    Supply(u32),
+    SupplyAtLeast(u32),
+    SupplyBetween(u32, u32),
     SupplyLeft(u32),
-    Tech(UpgradeId),
-    Structure(UnitTypeId),
-    Count(UnitTypeId, usize),
+    TechComplete(UpgradeId),
+    StructureComplete(UnitTypeId),
+    LessThanCount(UnitTypeId, usize),
 }
 #[derive(Debug)]
 pub enum BuildOrderAction {

@@ -11,7 +11,8 @@ mod siting;
 
 const CHRONOBOOST_COST: u32 = 50;
 
-#[must_use] pub fn get_options<'a>() -> LaunchOptions<'a> {
+#[must_use]
+pub fn get_options<'a>() -> LaunchOptions<'a> {
     LaunchOptions::<'a> {
         realtime: false,
         save_replay_as: Some("/home/andrew/Rust/ReBiCycler/replays/test"),
@@ -19,14 +20,16 @@ const CHRONOBOOST_COST: u32 = 50;
     }
 }
 
-#[must_use] pub fn distance_squared(a: &Point2, b: &Point2) -> f32 {
+#[must_use]
+pub fn distance_squared(a: &Point2, b: &Point2) -> f32 {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
 
     dx.mul_add(dx, dy * dy)
 }
 
-#[must_use] pub fn closest_index(target: Point2, population: Vec<Point2>) -> Option<usize> {
+#[must_use]
+pub fn closest_index(target: Point2, population: Vec<Point2>) -> Option<usize> {
     population
         .iter()
         .map(|pop| distance_squared(&target, pop))
@@ -41,14 +44,16 @@ pub struct Tag {
     type_id: UnitTypeId,
 }
 impl Tag {
-    #[must_use] pub fn from_unit(unit: &Unit) -> Self {
+    #[must_use]
+    pub fn from_unit(unit: &Unit) -> Self {
         Self {
             tag: unit.tag(),
             type_id: unit.type_id(),
         }
     }
 
-    #[must_use] pub const fn default() -> Self {
+    #[must_use]
+    pub const fn default() -> Self {
         Self {
             tag: 0,
             type_id: UnitTypeId::NotAUnit,
@@ -76,10 +81,6 @@ impl Player for ReBiCycler {
         }
 
         println!("Game start!");
-        println!(
-            "Main Nexus has {:?} workers assigned.",
-            self.base_managers.first().unwrap().workers().len()
-        );
         self.game_started = true;
         Ok(())
     }
@@ -95,8 +96,16 @@ impl Player for ReBiCycler {
             );
             self.step_build();
         };
-        if frame_no == 4000 {
-            self.leave();
+        if frame_no >= 2000 && frame_no % 100 == 0 {
+            if let Some(structure) = self.units.my.structures.first() {
+                let _: () = self
+                    .units
+                    .my
+                    .workers
+                    .iter()
+                    .map(|w| w.attack(Target::Tag(structure.tag()), false))
+                    .collect();
+            }
         }
         Ok(())
     }
@@ -173,7 +182,8 @@ impl Player for ReBiCycler {
 }
 
 impl ReBiCycler {
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             /* initializing fields */
             bom: BuildOrderManager::new(),
@@ -197,6 +207,9 @@ impl ReBiCycler {
             bm.add_building(building);
         }
 
+        bm.siting_manager
+            .add_pylon_site(position.towards(self.game_info.map_center, 10.0));
+
         self.base_managers.push(bm);
     }
 
@@ -208,7 +221,8 @@ impl ReBiCycler {
         if let Some(nn) = nearest_nexus {
             let nn_tag = Tag::from_unit(nn);
             self.base_managers
-                .iter_mut().find(|bm| bm.nexus == Some(nn_tag.clone()))
+                .iter_mut()
+                .find(|bm| bm.nexus == Some(nn_tag.clone()))
                 .map_or(
                     Err(UnitEmploymentError("No base managers exist!".to_string())),
                     |bm| bm.assign_unit(worker),
@@ -238,7 +252,7 @@ impl ReBiCycler {
 
     fn step_build(&mut self) {
         self.progress_build();
-        //self.check_policies();
+        self.check_policies();
     }
 
     fn progress_build(&mut self) {
@@ -247,7 +261,8 @@ impl ReBiCycler {
                 && self.evaluate_condition(&next_task.prereq)
             {
                 self.attempt_build_action(&next_task.action);
-                self.bom.mark_component_done();
+                println!("we started a build action!");
+                //self.bom.mark_component_done();
             }
         }
     }
@@ -261,7 +276,10 @@ impl ReBiCycler {
                 .iter()
                 .any(|n| n.energy().unwrap_or(0) >= CHRONOBOOST_COST),
             BuildOrderAction::Construct(building) => {
-                self.can_afford(*building, false) && self.supply_workers > 0
+                let afford = self.can_afford(*building, true);
+                let has_worker = !self.units.my.workers.is_empty();
+                println!("afford: {afford}, has worker {has_worker}");
+                afford && has_worker
             }
             BuildOrderAction::Research(upgrade, reseacher, _) => {
                 self.units
@@ -272,12 +290,16 @@ impl ReBiCycler {
                     .is_empty()
                     && self.can_afford_upgrade(*upgrade)
             }
-            BuildOrderAction::Train(_, ability) => self
-                .units
-                .my
-                .structures
-                .filter(|s| s.has_ability(*ability))
-                .is_empty(),
+            BuildOrderAction::Train(_, ability) => {
+                let has_trainer = self
+                    .units
+                    .my
+                    .structures
+                    .iter()
+                    .find(|s| s.has_ability(*ability))
+                    .is_some();
+                has_trainer
+            }
         }
     }
 
@@ -294,37 +316,40 @@ impl ReBiCycler {
                 continue;
             }
             self.attempt_build_action(&policy.action);
-            println!("Attempted Policy Action! {policy}");
+            //println!("Attempted Policy Action! {policy}");
             attempted_policies += 1;
         }
 
         if attempted_policies == 0 {
-            println!("No policies attempted");
+            //println!("No policies attempted");
         };
     }
 
     fn evaluate_condition(&self, condition: &BuildCondition) -> bool {
         match condition {
-            BuildCondition::Supply(supply) => self.supply_used < *supply,
-            BuildCondition::Count(unit_type, count) => {
+            BuildCondition::SupplyAtLeast(supply) => self.supply_used >= *supply,
+            BuildCondition::SupplyBetween(low, high) => {
+                self.supply_used >= *low && self.supply_used < *high
+            }
+            BuildCondition::LessThanCount(unit_type, desired_count) => {
                 let unit_count = self.counter().count(*unit_type);
-                unit_count < *count
+                unit_count < *desired_count
             }
             BuildCondition::SupplyLeft(remaining_supply) => self.supply_left < *remaining_supply,
-            BuildCondition::Structure(structure_type) => self
+            BuildCondition::StructureComplete(structure_type) => self
                 .units
                 .my
                 .structures
                 .iter()
                 .any(|u| u.type_id() == *structure_type),
-            BuildCondition::Tech(upgrade) => self.upgrade_progress(*upgrade) > 0.95,
+            BuildCondition::TechComplete(upgrade) => self.upgrade_progress(*upgrade) > 0.95,
         }
     }
 
     fn attempt_build_action(&self, action: &BuildOrderAction) {
         match action {
             BuildOrderAction::Construct(unit_type) => {
-                self.build(unit_type, self.start_center.towards(self.enemy_start, 2.0));
+                self.build(unit_type);
             }
             BuildOrderAction::Train(unit_type, _) => self.train(*unit_type),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(*ability),
@@ -334,9 +359,18 @@ impl ReBiCycler {
         }
     }
 
-    fn build(&self, structure_type: &UnitTypeId, position: Point2) {
-        let builder = self.units.my.workers.first().unwrap();
-        builder.build(*structure_type, position, false);
+    fn build(&self, structure_type: &UnitTypeId) {
+        let position = self
+            .base_managers
+            .first()
+            .unwrap()
+            .siting_manager
+            .get_free_building_site(3);
+        if let Some(position) = position {
+            let builder = self.units.my.workers.first().unwrap();
+            builder.build(*structure_type, position.location, false);
+            builder.sleep(5);
+        }
     }
 
     fn train(&self, unit_type: UnitTypeId) {
@@ -355,7 +389,8 @@ impl ReBiCycler {
             .units
             .my
             .structures
-            .iter().find(|s| s.is_using(ability));
+            .iter()
+            .find(|s| s.is_using(ability));
         if let (Some(nexus), Some(target)) = (energetic_nexi.next(), target) {
             nexus.command(
                 AbilityId::EffectChronoBoost,
