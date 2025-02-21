@@ -1,13 +1,9 @@
-use rust_sc2::prelude::*;
 use rebicycler::ReBiCycler;
-
+use rust_sc2::prelude::*;
 
 fn main() -> SC2Result<()> {
     let mut bot = ReBiCycler::new();
-    let options = LaunchOptions::<'_>{
-        realtime: false,
-        ..Default::default()
-    };
+    let options = rebicycler::get_options();
 
     println!("{}", options.realtime);
     run_vs_computer(
@@ -17,7 +13,7 @@ fn main() -> SC2Result<()> {
             Difficulty::VeryHard,
             None, // AI Build (random here)
         ),
-        "AutomatonLE", // Map name
+        "AutomatonAIE", // Map name
         options,
     )
 }

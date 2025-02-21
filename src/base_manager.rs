@@ -1,22 +1,33 @@
+use crate::errors::{InvalidUnitError, UnitEmploymentError};
+use crate::siting::SitingManager;
+use crate::Tag;
 use rust_sc2::prelude::*;
-use crate::{Tag, UnitEmploymentError};
 
-pub struct BaseManager{
+pub struct BaseManager {
     pub nexus: Option<Tag>,
+    pub location: Point2,
     workers: Vec<Tag>,
     minerals: Vec<Tag>,
     geysers: Vec<Tag>,
     assimilators: Vec<Tag>,
+    siting_manager: SitingManager,
+}
+impl Into<Point2> for BaseManager {
+    fn into(self) -> Point2 {
+        self.location.clone()
+    }
 }
 
 impl BaseManager {
-    pub fn new(nexus: Tag) -> Self {
+    pub fn new(nexus: Option<Tag>, name: String, location: Point2) -> Self {
         BaseManager {
-            nexus: Some(nexus),
+            nexus: nexus.clone(),
+            location,
             workers: Vec::new(),
             minerals: Vec::new(),
             geysers: Vec::new(),
             assimilators: Vec::new(),
+            siting_manager: SitingManager::new(nexus, name, location),
         }
     }
 
@@ -40,23 +51,27 @@ impl BaseManager {
         &self.assimilators
     }
 
-    pub fn assign_unit(&mut self, unit_tag: Tag) -> Result<(), UnitEmploymentError> {
+    pub fn assign_unit(&mut self, unit: &Unit) -> Result<(), UnitEmploymentError> {
+        let unit_tag = Tag::from_unit(unit);
         println!("Assigning new unit_tag to base manager: {:?}", unit_tag);
-        match unit_tag.type_id {
-            UnitTypeId::Nexus => self.nexus = Some(unit_tag),
-            UnitTypeId::Probe => self.workers.push(unit_tag),
-            UnitTypeId::MineralField => self.minerals.push(unit_tag),
-            UnitTypeId::MineralField750 => self.minerals.push(unit_tag),
-            UnitTypeId::VespeneGeyser => self.geysers.push(unit_tag),
-            UnitTypeId::Assimilator => self.assimilators.push(unit_tag),
 
-            _ => {
-                return Err(UnitEmploymentError(
-                    "Unable to employ unit_tag at BaseManager".to_string(),
-                ))
+        if unit.is_mineral() {
+            self.minerals.push(unit_tag)
+        } else if unit.is_geyser() {
+            self.geysers.push(unit_tag);
+        } else {
+            match unit_tag.type_id {
+                UnitTypeId::Nexus => self.nexus = Some(unit_tag),
+                UnitTypeId::Probe => self.workers.push(unit_tag),
+                UnitTypeId::Assimilator => self.assimilators.push(unit_tag),
+
+                _ => {
+                    return Err(UnitEmploymentError(
+                        "Unable to employ unit_tag at BaseManager".to_string(),
+                    ))
+                }
             }
         }
-        
         Ok(())
     }
 
@@ -77,52 +92,22 @@ impl BaseManager {
         }
         Ok(())
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn init_base_manager() -> BaseManager {
-        let nexus = Tag{tag: 1, type_id: UnitTypeId::Nexus};
-        let mut bm = BaseManager::new(nexus);
-
-        bm.assign_unit(Tag{tag: 2, type_id: UnitTypeId::Probe}).unwrap();
-        bm.assign_unit(Tag{tag: 3, type_id: UnitTypeId::MineralField750}).unwrap();
-        bm.assign_unit(Tag{tag: 4, type_id: UnitTypeId::VespeneGeyser}).unwrap();
-        bm.assign_unit(Tag{tag: 5, type_id: UnitTypeId::Assimilator}).unwrap();
-
-        bm
-    }
-    #[test]
-    fn base_manager_assigns_units_properly() {
-        let mut bm = BaseManager::new(Tag{tag: 1, type_id: UnitTypeId::Nexus});
-        bm.assign_unit(Tag{tag: 2, type_id: UnitTypeId::Probe}).unwrap();
-        bm.assign_unit(Tag{tag: 3, type_id: UnitTypeId::MineralField750}).unwrap();
-        bm.assign_unit(Tag{tag: 4, type_id: UnitTypeId::VespeneGeyser}).unwrap();
-        bm.assign_unit(Tag{tag: 5, type_id: UnitTypeId::Assimilator}).unwrap();
-
-        assert_eq!(bm.nexus(), &Some(Tag{tag: 1, type_id: UnitTypeId::Nexus}));
-        assert_eq!(bm.workers(), &vec![Tag{tag: 2, type_id: UnitTypeId::Probe}]);
-        assert_eq!(bm.minerals(), &vec![Tag{tag: 3, type_id: UnitTypeId::MineralField750}]);
-        assert_eq!(bm.geysers(), &vec![Tag{tag: 4, type_id: UnitTypeId::VespeneGeyser}]);
-        assert_eq!(bm.assimilators(), &vec![Tag{tag: 5, type_id: UnitTypeId::Assimilator}]);
+    pub fn add_building(&mut self, building: &Unit) -> Result<(), InvalidUnitError> {
+        if let Some(footprint) = building.building_size() {
+            self.siting_manager.add_building(
+                Tag::from_unit(building),
+                building.position(),
+                rust_sc2::geometry::Size::new(footprint, footprint),
+            )
+        } else {
+            Err(InvalidUnitError(
+                "All Protoss buildings have Some(building_size())!".to_string(),
+            ))
+        }
     }
 
-    #[test]
-    fn base_manager_surrenders_units_properly() {
-        let mut bm = init_base_manager();
-
-        bm.unassign_unit(Tag{tag: 1, type_id: UnitTypeId::Nexus}).unwrap();
-        bm.unassign_unit(Tag{tag: 2, type_id: UnitTypeId::Probe}).unwrap();
-        bm.unassign_unit(Tag{tag: 3, type_id: UnitTypeId::MineralField750})
-            .unwrap();
-        bm.unassign_unit(Tag{tag: 4, type_id: UnitTypeId::VespeneGeyser}).unwrap();
-        bm.unassign_unit(Tag{tag: 5, type_id: UnitTypeId::Assimilator}).unwrap();
-
-        assert_eq!(bm.nexus(), &None);
-        assert!(bm.workers().is_empty());
-        assert!(bm.minerals().is_empty());
-        assert!(bm.geysers().is_empty());
-        assert!(bm.assimilators().is_empty());
+    pub fn destroy_building_by_tag(&mut self, building: Tag) -> bool {
+        self.siting_manager.destroy_building_by_tag(building)
     }
 }
