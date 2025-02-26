@@ -7,10 +7,11 @@ impl Debug for UnitEmploymentError {
     }
 }
 
-
 pub struct InvalidUnitError(pub String);
 impl Debug for InvalidUnitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Bad unit: {}", self.0)
     }
 }
+#[derive(Debug)]
+pub struct DataError(pub String);

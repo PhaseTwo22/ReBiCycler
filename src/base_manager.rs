@@ -1,10 +1,13 @@
 use crate::errors::{InvalidUnitError, UnitEmploymentError};
+use crate::protoss_bot::ReBiCycler;
 use crate::siting::SitingManager;
-use crate::Tag;
+use crate::{closest_index, Tag};
+use rust_sc2::bot::Expansion;
 use rust_sc2::prelude::*;
 
 pub struct BaseManager {
     pub nexus: Option<Tag>,
+    pub name: String,
     pub location: Point2,
     workers: Vec<Tag>,
     minerals: Vec<Tag>,
@@ -19,15 +22,38 @@ impl From<BaseManager> for Point2 {
 }
 
 impl BaseManager {
-    pub fn new(nexus: Option<Tag>, name: String, location: Point2) -> Self {
+    pub fn new(bot: &ReBiCycler, expansion: &Expansion, name: String) -> Self {
+        let base_tag = Self::base_tag(expansion);
         Self {
-            nexus: nexus.clone(),
-            location,
+            nexus: base_tag.clone(),
+            location: expansion.loc,
+            name: name.clone(),
             workers: Vec::new(),
-            minerals: Vec::new(),
-            geysers: Vec::new(),
+            minerals: expansion
+                .minerals
+                .iter()
+                .map(|a| bot.units.resources.get(*a))
+                .filter_map(|u| Some(Tag::from_unit(u?)))
+                .collect(),
+            geysers: expansion
+                .geysers
+                .iter()
+                .map(|a| bot.units.resources.get(*a))
+                .filter_map(|u| Some(Tag::from_unit(u?)))
+                .collect(),
             assimilators: Vec::new(),
-            siting_manager: SitingManager::new(nexus, name, location),
+            siting_manager: SitingManager::new(base_tag, name, expansion.loc),
+        }
+    }
+
+    pub fn base_tag(expansion: &Expansion) -> Option<Tag> {
+        if !expansion.alliance.is_mine() {
+            None
+        } else {
+            Some(Tag {
+                tag: expansion.base.unwrap(),
+                type_id: UnitTypeId::Nexus,
+            })
         }
     }
 
@@ -94,7 +120,7 @@ impl BaseManager {
     }
 
     pub fn add_building(&mut self, building: &Unit) -> Result<(), InvalidUnitError> {
-        if let Some(size) = building.building_size() {
+        if let Some(size) = building.footprint_radius() {
             self.siting_manager
                 .add_building(Tag::from_unit(building), building.position(), size)
         } else {
@@ -106,5 +132,61 @@ impl BaseManager {
 
     pub fn destroy_building_by_tag(&mut self, building: Tag) -> bool {
         self.siting_manager.destroy_building_by_tag(building)
+    }
+}
+
+impl ReBiCycler {
+    pub fn reassign_worker_to_nearest_base(
+        &mut self,
+        worker: &Unit,
+    ) -> Result<(), UnitEmploymentError> {
+        let nearest_nexus = self.units.my.townhalls.iter().closest(worker);
+        if let Some(nn) = nearest_nexus {
+            let nn_tag = Tag::from_unit(nn);
+            self.base_managers
+                .iter_mut()
+                .find(|bm| bm.nexus == Some(nn_tag.clone()))
+                .map_or(
+                    Err(UnitEmploymentError("No base managers exist!".to_string())),
+                    |bm| bm.assign_unit(worker),
+                )
+        } else {
+            Err(UnitEmploymentError("No nexi exist!".to_string()))
+        }
+    }
+    /// Find the nearest `BaseManager` to a point, if we have any.
+    pub fn get_closest_base_manager(&mut self, position: Point2) -> Option<&mut BaseManager> {
+        if self.base_managers.is_empty() {
+            return None;
+        }
+        let bm_points = self.base_managers.iter().map(|bm| bm.location);
+        let nearest_bm = closest_index(position, bm_points);
+        match nearest_bm {
+            Some(index) => Some(&mut self.base_managers[index]),
+            None => None,
+        }
+    }
+
+    /// When a new base finishes, we want to make a new Base Manager for it.
+    /// Add the resources and existing buildings, if any.
+    pub fn new_base_finished(&mut self, base: Tag, position: Point2) {
+        let mut bm = BaseManager::new(
+            self,
+            self.expansions.iter().find(|e| e.loc == position).unwrap(),
+            format!("Expansion {}", self.counter().count(UnitTypeId::Nexus)),
+        );
+
+        for resource in self.units.resources.iter().closer(10.0, position) {
+            bm.assign_unit(resource);
+        }
+
+        for building in self.units.my.structures.iter().closer(15.0, position) {
+            bm.add_building(building);
+        }
+
+        bm.siting_manager
+            .add_pylon_site(position.towards(self.game_info.map_center, 10.0));
+
+        self.base_managers.push(bm);
     }
 }

@@ -1,4 +1,4 @@
-use rebicycler::ReBiCycler;
+use rebicycler::protoss_bot::ReBiCycler;
 use rust_sc2::prelude::*;
 
 fn main() -> SC2Result<()> {
