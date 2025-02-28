@@ -47,7 +47,7 @@ impl Player for ReBiCycler {
             );
             self.step_build();
         };
-        if frame_no >= 2000 && frame_no % 100 == 0 {
+        if frame_no >= 6000 && frame_no % 100 == 0 {
             if let Some(structure) = self.units.my.structures.first() {
                 let _: () = self
                     .units
@@ -76,8 +76,9 @@ impl Player for ReBiCycler {
                     "Building Finished! {:?}, {building_tag}",
                     building.type_id()
                 );
+
                 if building.type_id() == UnitTypeId::Nexus {
-                    self.new_base_finished(Tag::from_unit(building), building.position());
+                    self.new_base_finished(building.position());
                 }
             }
             Event::UnitCreated(unit_tag) => {
@@ -98,11 +99,7 @@ impl Player for ReBiCycler {
                             alliance
                         );
                         let unit_tag = Tag::from_unit(unit);
-                        if unit.is_structure() && unit.is_mine() {
-                            self.base_managers
-                                .iter_mut()
-                                .any(|bm| bm.destroy_building_by_tag(unit_tag.clone()));
-                        };
+                        self.siting_director.find_and_destroy_building(unit_tag);
                     }
                     None => println!("Unknown unit destroyed: {unit_tag:?}"),
                 };
@@ -117,6 +114,13 @@ impl Player for ReBiCycler {
                     .next()
                     .unwrap();
                 println!("New Building! {:?}, {building_tag}", building.type_id());
+                let tag = Tag::from_unit(building);
+                if let Err(e) = self
+                    .siting_director
+                    .construction_begin(tag, building.position())
+                {
+                    println!("No slot for new building: {e:?}")
+                }
             }
             Event::RandomRaceDetected(race) => {
                 if self.enemy_race.is_random() {

@@ -1,6 +1,5 @@
 use crate::errors::{InvalidUnitError, UnitEmploymentError};
 use crate::protoss_bot::ReBiCycler;
-use crate::siting::SitingManager;
 use crate::{closest_index, Tag};
 use rust_sc2::bot::Expansion;
 use rust_sc2::prelude::*;
@@ -13,7 +12,6 @@ pub struct BaseManager {
     minerals: Vec<Tag>,
     geysers: Vec<Tag>,
     assimilators: Vec<Tag>,
-    pub siting_manager: SitingManager,
 }
 impl From<BaseManager> for Point2 {
     fn from(val: BaseManager) -> Self {
@@ -42,7 +40,6 @@ impl BaseManager {
                 .filter_map(|u| Some(Tag::from_unit(u?)))
                 .collect(),
             assimilators: Vec::new(),
-            siting_manager: SitingManager::new(base_tag, name, expansion.loc),
         }
     }
 
@@ -120,18 +117,14 @@ impl BaseManager {
     }
 
     pub fn add_building(&mut self, building: &Unit) -> Result<(), InvalidUnitError> {
-        if let Some(size) = building.footprint_radius() {
-            self.siting_manager
-                .add_building(Tag::from_unit(building), building.position(), size)
-        } else {
-            Err(InvalidUnitError(
-                "All Protoss buildings have Some(building_size())!".to_string(),
-            ))
-        }
-    }
-
-    pub fn destroy_building_by_tag(&mut self, building: Tag) -> bool {
-        self.siting_manager.destroy_building_by_tag(building)
+        use UnitTypeId::*;
+        let tag = Tag::from_unit(building);
+        match building.type_id() {
+            Assimilator | AssimilatorRich => self.assimilators.push(tag),
+            Nexus => self.nexus = Some(tag),
+            _ => (),
+        };
+        Ok(())
     }
 }
 
@@ -169,7 +162,7 @@ impl ReBiCycler {
 
     /// When a new base finishes, we want to make a new Base Manager for it.
     /// Add the resources and existing buildings, if any.
-    pub fn new_base_finished(&mut self, base: Tag, position: Point2) {
+    pub fn new_base_finished(&mut self, position: Point2) {
         let mut bm = BaseManager::new(
             self,
             self.expansions.iter().find(|e| e.loc == position).unwrap(),
@@ -183,9 +176,6 @@ impl ReBiCycler {
         for building in self.units.my.structures.iter().closer(15.0, position) {
             bm.add_building(building);
         }
-
-        bm.siting_manager
-            .add_pylon_site(position.towards(self.game_info.map_center, 10.0));
 
         self.base_managers.push(bm);
     }

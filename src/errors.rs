@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use rust_sc2::prelude::Point2;
+
 pub struct UnitEmploymentError(pub String);
 impl Debug for UnitEmploymentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -15,3 +17,14 @@ impl Debug for InvalidUnitError {
 }
 #[derive(Debug)]
 pub struct DataError(pub String);
+
+#[derive(Debug)]
+pub enum BuildError {
+    CantPlace(Point2, rust_sc2::ids::UnitTypeId),
+    NoPlacementLocations,
+    CantAfford,
+    InvalidUnit(String),
+    NoTrainer,
+    AlreadyResearching,
+    NoBuildItemsLeft,
+}
