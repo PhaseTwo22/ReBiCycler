@@ -15,12 +15,11 @@ impl Debug for InvalidUnitError {
         write!(f, "Bad unit: {}", self.0)
     }
 }
-#[derive(Debug)]
-pub struct DataError(pub String);
 
 #[derive(Debug)]
 pub enum BuildError {
     CantPlace(Point2, rust_sc2::ids::UnitTypeId),
+    NoBuildingLocationHere(Point2),
     NoPlacementLocations,
     CantAfford,
     InvalidUnit(String),

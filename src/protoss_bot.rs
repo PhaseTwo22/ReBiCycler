@@ -20,15 +20,16 @@ impl Player for ReBiCycler {
         self.bom = BuildOrderManager::new();
 
         let map_center = self.game_info.map_center;
-        let expansions: Vec<rust_sc2::bot::Expansion> = self.expansions.clone();
+
         self.siting_director
-            .initialize_global_placement(expansions, map_center);
+            .initialize_global_placement(self.expansions.clone().as_slice(), map_center);
 
         println!("Global siting complete: {:?}", self.siting_director);
 
         for worker in &self.units.my.workers.clone() {
-            self.reassign_worker_to_nearest_base(worker)
-                .expect("No bases at game start?!");
+            if self.reassign_worker_to_nearest_base(worker).is_err() {
+                println!("No bases at game start?!");
+            }
         }
 
         println!("Game start!");
@@ -40,7 +41,7 @@ impl Player for ReBiCycler {
         self.observe();
 
         //self.micro();
-        if frame_no % 100 == 0 {
+        if frame_no % 250 == 0 {
             println!(
                 "Step step step {}, M:{}, G:{}, S:{}/{}",
                 frame_no, self.minerals, self.vespene, self.supply_used, self.supply_cap
@@ -54,7 +55,20 @@ impl Player for ReBiCycler {
                     .my
                     .workers
                     .iter()
+                    .idle()
                     .map(|w| w.attack(Target::Tag(structure.tag()), false))
+                    .collect();
+
+                let _: () = self
+                    .units
+                    .my
+                    .workers
+                    .iter()
+                    .map(|w| {
+                        if w.is_gathering() {
+                            w.attack(Target::Tag(structure.tag()), false);
+                        }
+                    })
                     .collect();
             }
         }
@@ -64,28 +78,32 @@ impl Player for ReBiCycler {
     fn on_event(&mut self, event: Event) -> SC2Result<()> {
         match event {
             Event::ConstructionComplete(building_tag) => {
-                let building = self
-                    .units
-                    .my
-                    .structures
-                    .iter()
-                    .find_tags(&vec![building_tag])
-                    .next()
-                    .unwrap();
+                let Some(building) = self.units.my.structures.get(building_tag) else {
+                    println!("ConstructionComplete but unit not found! {building_tag}");
+                    return Ok(());
+                };
+
                 println!(
                     "Building Finished! {:?}, {building_tag}",
                     building.type_id()
                 );
 
                 if building.type_id() == UnitTypeId::Nexus {
-                    self.new_base_finished(building.position());
+                    if let Err(e) = self.new_base_finished(building.position()) {
+                        println!("Nexus build on non-expansion location! {e:?}");
+                    }
                 }
             }
             Event::UnitCreated(unit_tag) => {
-                let unit = self.units.my.units.get(unit_tag).unwrap().clone();
+                let Some(unit) = self.units.my.units.get(unit_tag).cloned() else {
+                    println!("UnitCreated but unit not found! {unit_tag}");
+                    return Ok(());
+                };
                 //println!("New Unit! {:?}, {}", unit.type_id(), unit_tag);
                 if unit.type_id() == UnitTypeId::Probe && self.game_started {
-                    self.reassign_worker_to_nearest_base(&unit);
+                    if let Err(e) = self.reassign_worker_to_nearest_base(&unit) {
+                        println!("Unable to assign new probe to a nexus? {e:?}");
+                    }
                 }
             }
             Event::UnitDestroyed(unit_tag, alliance) => {
@@ -99,27 +117,31 @@ impl Player for ReBiCycler {
                             alliance
                         );
                         let unit_tag = Tag::from_unit(unit);
-                        self.siting_director.find_and_destroy_building(unit_tag);
+                        if unit.is_structure() && unit.is_mine() {
+                            if let Err(e) =
+                                self.siting_director.find_and_destroy_building(&unit_tag)
+                            {
+                                println!(
+                                    "Destroyed structure not logged in siting director! {e:?}"
+                                );
+                            };
+                        }
                     }
                     None => println!("Unknown unit destroyed: {unit_tag:?}"),
                 };
             }
             Event::ConstructionStarted(building_tag) => {
-                let building = self
-                    .units
-                    .my
-                    .structures
-                    .iter()
-                    .find_tags(&vec![building_tag])
-                    .next()
-                    .unwrap();
+                let Some(building) = self.units.my.structures.get(building_tag).cloned() else {
+                    println!("ConstructionStarted but building not found! {building_tag}");
+                    return Ok(());
+                };
                 println!("New Building! {:?}, {building_tag}", building.type_id());
-                let tag = Tag::from_unit(building);
+                let tag = Tag::from_unit(&building);
                 if let Err(e) = self
                     .siting_director
                     .construction_begin(tag, building.position())
                 {
-                    println!("No slot for new building: {e:?}")
+                    println!("No slot for new building: {e:?}");
                 }
             }
             Event::RandomRaceDetected(race) => {

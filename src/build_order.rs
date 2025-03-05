@@ -1,11 +1,9 @@
 use core::fmt;
-use std::ops::Deref;
 
 use rust_sc2::prelude::*;
 
 use crate::{errors::BuildError, protoss_bot::ReBiCycler};
 
-const CHRONOBOOST_COST: u32 = 50;
 /// This module serves to manage our build orders.
 /// We want to use kiss principle here, but still have a flexible system.
 ///
@@ -21,9 +19,11 @@ pub struct BuildOrderManager {
 
 impl BuildOrderManager {
     pub fn new() -> Self {
-        use BuildCondition::*;
-        use BuildOrderAction::*;
-        use UnitTypeId::*;
+        use BuildCondition::{
+            AtLeastCount, LessThanCount, StructureComplete, SupplyBetween, SupplyLeftBelow,
+        };
+        use BuildOrderAction::{Chrono, Construct, Train};
+        use UnitTypeId::{Gateway, Probe, Pylon};
         Self {
             policies: vec![
                 Policy::new(
@@ -106,8 +106,8 @@ impl fmt::Display for Policy {
     }
 }
 impl Policy {
-    pub fn new(action: BuildOrderAction, conditions: Vec<BuildCondition>) -> Self {
-        Policy {
+    const fn new(action: BuildOrderAction, conditions: Vec<BuildCondition>) -> Self {
+        Self {
             action,
             conditions,
             active: true,
@@ -122,11 +122,11 @@ impl ReBiCycler {
     }
 
     fn progress_build(&mut self) -> Option<()> {
-        let next_task = self.bom.get_next_component()?.clone();
+        let next_task = self.bom.get_next_component()?;
         if self.evaluate_conditions(&next_task.conditions)
             && self.can_do_build_action(&next_task.action)
         {
-            self.attempt_build_action(&next_task.action)
+            self.attempt_build_action(&next_task.action);
         }
         None
     }
@@ -138,7 +138,7 @@ impl ReBiCycler {
                 .my
                 .townhalls
                 .iter()
-                .any(|n| n.energy().unwrap_or(0) >= CHRONOBOOST_COST),
+                .any(|n| n.has_ability(AbilityId::EffectChronoBoostEnergyCost)),
             BuildOrderAction::Construct(building) => {
                 let afford = self.can_afford(*building, true);
                 let has_worker = !self.units.my.workers.is_empty();
@@ -184,14 +184,14 @@ impl ReBiCycler {
             .collect();
     }
 
-    fn evaluate_conditions(&self, conditions: &Vec<BuildCondition>) -> bool {
+    fn evaluate_conditions(&self, conditions: &[BuildCondition]) -> bool {
         conditions.iter().all(|condition| match condition {
             BuildCondition::SupplyAtLeast(supply) => self.supply_used >= *supply,
             BuildCondition::SupplyBetween(low, high) => {
                 self.supply_used >= *low && self.supply_used < *high
             }
             BuildCondition::LessThanCount(unit_type, desired_count) => {
-                let unit_count = self.counter().count(*unit_type);
+                let unit_count = self.counter().ordered().count(*unit_type);
                 unit_count < *desired_count
             }
             BuildCondition::SupplyLeftBelow(remaining_supply) => {
@@ -206,14 +206,14 @@ impl ReBiCycler {
                 .any(|u| u.type_id() == *structure_type),
             BuildCondition::TechComplete(upgrade) => self.upgrade_progress(*upgrade) > 0.95,
             BuildCondition::AtLeastCount(unit_type, desired_count) => {
-                self.counter().count(*unit_type) >= *desired_count
+                self.counter().ordered().count(*unit_type) >= *desired_count
             }
         })
     }
 
     fn attempt_build_action(&mut self, action: &BuildOrderAction) {
         let result = match action {
-            BuildOrderAction::Construct(unit_type) => self.build(unit_type),
+            BuildOrderAction::Construct(unit_type) => self.build(*unit_type),
             BuildOrderAction::Train(unit_type, _) => self.train(*unit_type),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(*ability),
             BuildOrderAction::Research(upgrade, researcher, ability) => {
@@ -221,12 +221,16 @@ impl ReBiCycler {
             }
         };
 
-        result.inspect_err(|err| match err {
-            BuildError::CantPlace(location, _type_id) => {
-                self.siting_director.mark_position_blocked(location)
+        if let Err(err) = result {
+            match err {
+                BuildError::CantPlace(location, _type_id) => {
+                    if let Err(err) = self.siting_director.mark_position_blocked(location) {
+                        println!("Can't block non-templated building location: {err:?}");
+                    };
+                }
+                _ => println!("Build order blocked: {action:?} > {err:?}"),
             }
-            _ => println!("Build order blocked: {:?} > {:?}", action, err),
-        });
+        }
     }
 
     fn train(&self, unit_type: UnitTypeId) -> Result<(), BuildError> {
@@ -243,9 +247,9 @@ impl ReBiCycler {
         let nexus = self
             .units
             .my
-            .townhalls
+            .structures
             .iter()
-            .find(|unit| unit.energy().unwrap_or(0) >= CHRONOBOOST_COST)
+            .find(|unit| unit.has_ability(AbilityId::EffectChronoBoostEnergyCost))
             .ok_or(BuildError::CantAfford)?;
         let target = self
             .units
@@ -256,13 +260,24 @@ impl ReBiCycler {
             .ok_or(BuildError::NoTrainer)?;
 
         nexus.command(
-            AbilityId::EffectChronoBoost,
+            AbilityId::EffectChronoBoostEnergyCost,
             Target::Tag(target.tag()),
             false,
+        );
+        println!(
+            "Chrono! {:?} on {:?}",
+            crate::Tag::from_unit(nexus),
+            crate::Tag::from_unit(target),
         );
         Ok(())
     }
 
+    /// Finds a structure to do the research, and then does so.
+    ///
+    /// # Errors
+    /// `BuildError::AlreadyResearching` if its already in progress or done
+    /// `BuildError::CantAfford` if we can't afford the upgrade
+    /// `BuildError::NoTrainer` if the required structure is destroyed. Not sure about depowered.
     pub fn research(
         &self,
         researcher: UnitTypeId,

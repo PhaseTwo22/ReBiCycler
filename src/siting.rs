@@ -3,18 +3,11 @@ use std::{
     fmt::{self, Debug, Display},
 };
 
-use crate::{
-    errors::{BuildError, InvalidUnitError},
-    protoss_bot::ReBiCycler,
-    Tag,
-};
-use rust_sc2::{
-    action::ActionResult,
-    bot::{Bot, Expansion},
-    prelude::*,
-};
+use crate::{errors::BuildError, protoss_bot::ReBiCycler, Tag};
+use rust_sc2::{bot::Expansion, prelude::*};
 
 const PYLON_POWER_DISTANCE: f32 = 6.5;
+#[allow(dead_code)]
 const EXPANSION_NAMES: [&str; 48] = [
     "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ", "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ",
     "Υ", "Φ", "Χ", "Ψ", "Ω", "Α\'", "Β\'", "Γ\'", "Δ\'", "Ε\'", "Ζ\'", "Η\'", "Θ\'", "Ι\'", "Κ\'",
@@ -29,8 +22,8 @@ enum BuildingStatus {
     Free,
 }
 impl BuildingStatus {
-    pub fn matches(&self, type_id: &UnitTypeId) -> bool {
-        *self == BuildingStatus::Free || *self == BuildingStatus::Intended(*type_id)
+    pub fn matches(&self, type_id: UnitTypeId) -> bool {
+        *self == Self::Free || *self == Self::Intended(type_id)
     }
 }
 
@@ -47,10 +40,10 @@ impl Display for BuildingLocation {
     }
 }
 impl BuildingLocation {
-    pub fn new(location: Point2, size: SlotSize) -> BuildingLocation {
-        BuildingLocation {
+    pub fn new(location: Point2, size: SlotSize, intention: Option<UnitTypeId>) -> Self {
+        Self {
             location,
-            status: BuildingStatus::Free,
+            status: intention.map_or_else(|| BuildingStatus::Free, BuildingStatus::Intended),
             size,
         }
     }
@@ -73,7 +66,7 @@ impl BuildingLocation {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum SlotSize {
     Tumor,
     Small,
@@ -82,9 +75,9 @@ pub enum SlotSize {
 }
 
 impl SlotSize {
-    pub fn from(structure_type: &UnitTypeId) -> Result<SlotSize, BuildError> {
+    pub fn from(structure_type: UnitTypeId) -> Result<Self, BuildError> {
         match structure_type {
-            UnitTypeId::Nexus => Ok(SlotSize::Townhall),
+            UnitTypeId::Nexus => Ok(Self::Townhall),
             UnitTypeId::Assimilator
             | UnitTypeId::Gateway
             | UnitTypeId::WarpGate
@@ -95,14 +88,23 @@ impl SlotSize {
             | UnitTypeId::TemplarArchive
             | UnitTypeId::RoboticsBay
             | UnitTypeId::RoboticsFacility
-            | UnitTypeId::CyberneticsCore => Ok(SlotSize::Standard),
+            | UnitTypeId::CyberneticsCore => Ok(Self::Standard),
             UnitTypeId::PhotonCannon
             | UnitTypeId::DarkShrine
             | UnitTypeId::ShieldBattery
-            | UnitTypeId::Pylon => Ok(SlotSize::Small),
+            | UnitTypeId::Pylon => Ok(Self::Small),
             _ => Err(BuildError::InvalidUnit(format!(
                 "This is not a protoss structure: {structure_type:?}"
             ))),
+        }
+    }
+
+    const fn radius(&self) -> f32 {
+        match self {
+            Self::Tumor => 0.5,
+            Self::Small => 1.0,
+            Self::Standard => 1.5,
+            Self::Townhall => 2.5,
         }
     }
 }
@@ -116,26 +118,44 @@ impl Debug for SitingDirector {
         let sites: Vec<String> = self
             .building_locations
             .iter()
-            .map(|v| v.to_string())
+            .map(BuildingLocation::to_string)
             .collect();
         write!(f, "{:?}", sites.join("\n"))
     }
 }
 
 impl SitingDirector {
-    pub fn new() -> Self {
-        Self {
-            building_locations: Vec::new(),
-        }
-    }
-
-    pub fn initialize_global_placement(&mut self, expansions: Vec<Expansion>, map_center: Point2) {
-        expansions
+    pub fn initialize_global_placement(&mut self, expansions: &[Expansion], map_center: Point2) {
+        let _: () = expansions
             .iter()
-            .map(|e| self.build_expansion_template(e.loc, e.center, map_center));
+            .map(|e| self.build_expansion_template(e.loc, e.center, map_center))
+            .collect();
     }
 
     pub fn construction_begin(&mut self, tag: Tag, location: Point2) -> Result<(), BuildError> {
+        match tag.type_id {
+            UnitTypeId::Nexus
+            | UnitTypeId::Pylon
+            | UnitTypeId::Assimilator
+            | UnitTypeId::AssimilatorRich
+            | UnitTypeId::Gateway
+            | UnitTypeId::WarpGate
+            | UnitTypeId::Forge
+            | UnitTypeId::FleetBeacon
+            | UnitTypeId::TwilightCouncil
+            | UnitTypeId::PhotonCannon
+            | UnitTypeId::Stargate
+            | UnitTypeId::TemplarArchive
+            | UnitTypeId::DarkShrine
+            | UnitTypeId::RoboticsBay
+            | UnitTypeId::RoboticsFacility
+            | UnitTypeId::CyberneticsCore
+            | UnitTypeId::ShieldBattery => Ok(()),
+            _ => Err(BuildError::InvalidUnit(format!(
+                "{:?} at {:?}",
+                tag.type_id, location
+            ))),
+        }?;
         let has_spot = self
             .building_locations
             .iter_mut()
@@ -148,11 +168,13 @@ impl SitingDirector {
         }
     }
 
-    pub fn mark_position_blocked(&mut self, location: &Point2) {
+    pub fn mark_position_blocked(&mut self, location: Point2) -> Result<(), BuildError> {
         self.building_locations
             .iter_mut()
-            .find(|bl| bl.location == *location)
-            .map(|bl| bl.mark_blocked());
+            .find(|bl| bl.location == location)
+            .ok_or(BuildError::NoBuildingLocationHere(location))?
+            .mark_blocked();
+        Ok(())
     }
 
     fn build_expansion_template(
@@ -170,23 +192,21 @@ impl SitingDirector {
         let pylon_spots =
             base_location.circle_intersection(direction_to_map_center, PYLON_DISTANCE_FROM_NEXUS);
 
-        let places = if let Some(spots) = pylon_spots {
+        let places = pylon_spots.map_or([Some(pylon_behind_location), None, None], |spots| {
             [Some(pylon_behind_location), Some(spots[0]), Some(spots[1])]
-        } else {
-            [Some(pylon_behind_location), None, None]
-        };
+        });
 
-        places
+        let _: () = places
             .iter()
             .flatten()
             .map(|p| self.add_pylon_site(*p))
-            .collect()
+            .collect();
     }
 
     pub fn get_available_building_site(
         &self,
         size: &SlotSize,
-        type_id: &UnitTypeId,
+        type_id: UnitTypeId,
     ) -> Option<&BuildingLocation> {
         self.building_locations.iter().find(|bl| {
             let fits_intention = (bl.status.matches(type_id)) | (bl.status == BuildingStatus::Free);
@@ -198,7 +218,7 @@ impl SitingDirector {
     pub fn get_available_building_site_prioritized<F>(
         &self,
         size: &SlotSize,
-        type_id: &UnitTypeId,
+        type_id: UnitTypeId,
         priority_closure: F,
     ) -> Option<&BuildingLocation>
     where
@@ -214,133 +234,99 @@ impl SitingDirector {
             .min_by(priority_closure)
     }
 
-    pub fn generic_build_location_pattern(&mut self, pylon: &BuildingLocation) {
-        let _: () = [
-            pylon.location.offset(2.0, 0.0),
-            pylon.location.offset(2.0, 2.0),
-            pylon.location.offset(2.0, 2.0),
+    fn generic_build_location_pattern(pylon_point: Point2) -> Vec<BuildingLocation> {
+        [
+            pylon_point.offset(2.0, 0.0),
+            pylon_point.offset(2.0, 2.0),
+            pylon_point.offset(2.0, 2.0),
         ]
         .iter()
-        .map(|p| self.add_building_location(*p, SlotSize::Standard, None))
+        .map(|p| BuildingLocation::new(*p, SlotSize::Standard, None))
+        .collect()
+    }
+
+    pub fn modified_artosis_pattern(top_pylon_point: Point2) -> Vec<BuildingLocation> {
+        let pylon_radius = SlotSize::Small.radius();
+        let standard_radius = SlotSize::Standard.radius();
+        let standard_width = standard_radius * 2.0;
+
+        let top_half_offsets = [
+            (-pylon_radius - standard_radius, -pylon_radius), // left adjacent to pylon
+            (
+                // left of the one above
+                -pylon_radius - standard_radius - standard_width,
+                -pylon_radius,
+            ),
+            (
+                // up left from pylon
+                -standard_radius,
+                pylon_radius + standard_radius,
+            ),
+            (
+                // left of above
+                -standard_radius - standard_width,
+                pylon_radius + standard_radius,
+            ),
+            (pylon_radius + standard_radius, -pylon_radius), // right adjacent to pylon
+            (
+                // right of the one above
+                pylon_radius + standard_radius + standard_width,
+                -pylon_radius,
+            ),
+            (
+                // up right from pylon
+                standard_radius,
+                pylon_radius + standard_radius,
+            ),
+            (
+                // right of above
+                standard_radius + standard_width,
+                pylon_radius + standard_radius,
+            ),
+        ]
+        .into_iter()
+        .map(|(x, y)| Point2::new(x, y));
+        let bottom_half_offsets = top_half_offsets
+            .clone()
+            .map(|p| p.rotate(180.0).offset(0.0, pylon_radius * 4.0));
+
+        let bottom_pylon_point = top_pylon_point.offset(0.0, -pylon_radius * 4.0);
+        let pylons: Vec<BuildingLocation> = [
+            top_pylon_point,
+            top_pylon_point.offset(-(2.0 * standard_width), standard_width), // top far left
+            top_pylon_point.offset(2.0 * standard_width, standard_width),    // top far right
+            bottom_pylon_point,
+            bottom_pylon_point.offset(-(2.0 * standard_width), -standard_width), // top far left
+            bottom_pylon_point.offset(2.0 * standard_width, -standard_width),    // top far right
+        ]
+        .into_iter()
+        .map(|p| BuildingLocation::new(p, SlotSize::Small, Some(UnitTypeId::Pylon)))
         .collect();
+
+        let full: Vec<BuildingLocation> = top_half_offsets
+            .chain(bottom_half_offsets)
+            .map(|point| BuildingLocation::new(point, SlotSize::Standard, None))
+            .chain(pylons)
+            .collect();
+
+        full
     }
 
     pub fn add_pylon_site(&mut self, location: Point2) {
-        let pl = BuildingLocation {
-            location,
-            size: SlotSize::Small,
-            status: BuildingStatus::Intended(UnitTypeId::Pylon),
-        };
-        self.generic_build_location_pattern(&pl);
+        let pl = BuildingLocation::new(location, SlotSize::Small, Some(UnitTypeId::Pylon));
+        self.building_locations
+            .append(&mut Self::generic_build_location_pattern(location));
         self.building_locations.push(pl);
     }
 
-    fn add_building_location(
-        &mut self,
-        location: Point2,
-        size: SlotSize,
-        intent: Option<UnitTypeId>,
-    ) {
-        self.building_locations.push(BuildingLocation {
-            location,
-            status: if let Some(type_id) = intent {
-                BuildingStatus::Intended(type_id)
-            } else {
-                BuildingStatus::Free
-            },
-            size,
-        });
-    }
-
-    fn check_valid_sites(
-        &self,
-        bot: &Bot,
-        size: SlotSize,
-        building: &UnitTypeId,
-        construct_ability: &AbilityId,
-    ) -> Option<&BuildingLocation> {
-        let spots: Vec<(AbilityId, Point2, Option<_>)> = self
-            .building_locations
-            .iter()
-            .filter(|bl| bl.size == size && bl.status.matches(building))
-            .map(|bl| (*construct_ability, bl.location, None))
-            .collect();
-
-        bot.query_placement(spots, false).map_or(None, |options| {
-            options.iter().enumerate().find_map(|(i, ar)| {
-                if *ar == ActionResult::Success {
-                    self.building_locations.get(i)
-                } else {
-                    None
-                }
-            })
-        })
-    }
-
-    pub fn add_building(
-        &mut self,
-        building: Tag,
-        location: Point2,
-    ) -> Result<(), InvalidUnitError> {
-        match building.type_id {
-            UnitTypeId::Nexus
-            | UnitTypeId::Pylon
-            | UnitTypeId::Assimilator
-            | UnitTypeId::Gateway
-            | UnitTypeId::WarpGate
-            | UnitTypeId::Forge
-            | UnitTypeId::FleetBeacon
-            | UnitTypeId::TwilightCouncil
-            | UnitTypeId::PhotonCannon
-            | UnitTypeId::Stargate
-            | UnitTypeId::TemplarArchive
-            | UnitTypeId::DarkShrine
-            | UnitTypeId::RoboticsBay
-            | UnitTypeId::RoboticsFacility
-            | UnitTypeId::CyberneticsCore
-            | UnitTypeId::ShieldBattery => {
-                self.fill_in_building_location(building, location);
-                Ok(())
-            }
-            _ => Err(InvalidUnitError("Not a Protoss building!".to_string())),
-        }
-    }
-
-    fn find_building_location(&self, location: Point2) -> Option<&BuildingLocation> {
+    pub fn find_and_destroy_building(&mut self, building: &Tag) -> Result<(), BuildError> {
         self.building_locations
-            .iter()
-            .find(|bl| bl.location == location)
-    }
-
-    fn fill_in_building_location(
-        &mut self,
-        building: Tag,
-        location: Point2,
-    ) -> Result<(), BuildError> {
-        let filled_slot = self
-            .building_locations
-            .iter_mut()
-            .find(|bl| bl.location == location);
-        if let Some(bl) = filled_slot {
-            bl.build(building);
-            Ok(())
-        } else {
-            Err(BuildError::NoPlacementLocations)
-        }
-    }
-
-    pub fn find_and_destroy_building(&mut self, building: Tag) -> Result<(), BuildError> {
-        if let Some(found_building) = self
-            .building_locations
             .iter_mut()
             .find(|l| l.status == BuildingStatus::Built(building.clone()))
-        {
-            found_building.destroy()
-        } else {
-            Err(BuildError::InvalidUnit(format!(
-                "couldn't find building to destroy: {building:?}"
-            )))
-        }
+            .ok_or_else(|| {
+                BuildError::InvalidUnit(format!("couldn't find building to destroy: {building:?}"))
+            })?
+            .destroy()
     }
 }
 
@@ -357,34 +343,41 @@ impl ReBiCycler {
             .is_some()
     }
 
-    pub fn build(&self, structure_type: &UnitTypeId) -> Result<(), BuildError> {
+    /// Finds a site for the building, validates the position, and commands a worker to go build it.
+    /// # Errors
+    /// - `BuildError::NoPlacementLocation`
+    /// - `BuildError::NoTrainer` if we have no workers
+    /// - `BuildError::CantPlace` if we can't place at the found location.
+    pub fn build(&self, structure_type: UnitTypeId) -> Result<(), BuildError> {
         let size = SlotSize::from(structure_type)?;
         //self.game_data.units[structure_type]
 
         let position = self
             .siting_director
-            .get_available_building_site(&size, structure_type);
+            .get_available_building_site(&size, structure_type)
+            .ok_or(BuildError::NoPlacementLocations)?;
 
-        if let Some(position) = position {
-            if !self.validate_build_location(position, structure_type) {
-                Err(BuildError::CantPlace(position.location, *structure_type))
-            } else {
-                let builder = self.units.my.workers.closest(position.location).unwrap();
-                builder.build(*structure_type, position.location, false);
-                builder.sleep(5);
-                Ok(())
-            }
+        if self.validate_build_location(position, structure_type) {
+            let builder = self
+                .units
+                .my
+                .workers
+                .closest(position.location)
+                .ok_or(BuildError::NoTrainer)?;
+            builder.build(structure_type, position.location, false);
+            builder.sleep(5);
+            Ok(())
         } else {
-            Err(BuildError::NoPlacementLocations)
+            Err(BuildError::CantPlace(position.location, structure_type))
         }
     }
 
     fn validate_build_location(
         &self,
         build_location: &BuildingLocation,
-        structure_type: &UnitTypeId,
+        structure_type: UnitTypeId,
     ) -> bool {
-        self.can_place(*structure_type, build_location.location)
+        self.can_place(structure_type, build_location.location)
     }
 }
 
@@ -395,9 +388,9 @@ mod tests {
     #[test]
     fn expansion_template_places_12_buildings() {
         let origin = Point2::new(0.0, 0.0);
-        let mut sd = SitingDirector::new();
+        let mut sd = SitingDirector::default();
 
         sd.build_expansion_template(origin, Point2::new(-5.0, -5.0), Point2::new(10.0, 10.0));
-        assert_eq!(sd.building_locations.len(), 12)
+        assert_eq!(sd.building_locations.len(), 12);
     }
 }
