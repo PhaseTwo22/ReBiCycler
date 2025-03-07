@@ -22,8 +22,8 @@ enum BuildingStatus {
     Free,
 }
 impl BuildingStatus {
-    pub fn matches(&self, type_id: UnitTypeId) -> bool {
-        *self == Self::Free || *self == Self::Intended(type_id)
+    pub fn matches(&self, type_id: &UnitTypeId) -> bool {
+        *self == Self::Free || *self == Self::Intended(*type_id)
     }
 }
 
@@ -63,6 +63,37 @@ impl BuildingLocation {
     }
     pub fn mark_blocked(&mut self) {
         self.status = BuildingStatus::Blocked;
+    }
+
+    pub fn intersects_other(&self, other: &Self) -> bool {
+        other
+            .get_four_corners()
+            .iter()
+            .any(|p| self.inside_corners(*p))
+    }
+    fn inside_corners(&self, point: Point2) -> bool {
+        let (top_right, bottom_left) = self.get_two_corners();
+        let inside_x = bottom_left.x < point.x && point.x < top_right.x;
+        let inside_y = bottom_left.y < point.y && point.y < top_right.y;
+        inside_x && inside_y
+    }
+
+    fn get_two_corners(&self) -> (Point2, Point2) {
+        let my_radius = self.size.radius();
+        (
+            self.location + (Point2::new(1.0, 1.0) * my_radius),
+            self.location + (Point2::new(-1.0, -1.0) * my_radius),
+        )
+    }
+
+    fn get_four_corners(&self) -> [Point2; 4] {
+        let my_radius = self.size.radius();
+        [
+            self.location + (Point2::new(1.0, 1.0) * my_radius),
+            self.location + (Point2::new(-1.0, -1.0) * my_radius),
+            self.location + (Point2::new(-1.0, 1.0) * my_radius),
+            self.location + (Point2::new(1.0, -1.0) * my_radius),
+        ]
     }
 }
 
@@ -107,6 +138,15 @@ impl SlotSize {
             Self::Townhall => 2.5,
         }
     }
+
+    const fn default_checker(&self) -> UnitTypeId {
+        match self {
+            Self::Tumor => UnitTypeId::CreepTumor,
+            Self::Small => UnitTypeId::SupplyDepot,
+            Self::Standard => UnitTypeId::Barracks,
+            Self::Townhall => UnitTypeId::Nexus,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -115,12 +155,25 @@ pub struct SitingDirector {
 }
 impl Debug for SitingDirector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sites: Vec<String> = self
+        let small_sites = self
             .building_locations
             .iter()
-            .map(BuildingLocation::to_string)
-            .collect();
-        write!(f, "{:?}", sites.join("\n"))
+            .filter(|bl| bl.size == SlotSize::Small && bl.status != BuildingStatus::Blocked)
+            .count();
+        let standard_sites = self
+            .building_locations
+            .iter()
+            .filter(|bl| bl.size == SlotSize::Standard && bl.status != BuildingStatus::Blocked)
+            .count();
+        let large_sites = self
+            .building_locations
+            .iter()
+            .filter(|bl| bl.size == SlotSize::Townhall && bl.status != BuildingStatus::Blocked)
+            .count();
+        write!(
+            f,
+            "Siting Director: S:{small_sites:?} M:{standard_sites:?} L:{large_sites:?}"
+        )
     }
 }
 
@@ -203,12 +256,12 @@ impl SitingDirector {
             .collect();
     }
 
-    pub fn get_available_building_site(
-        &self,
-        size: &SlotSize,
-        type_id: UnitTypeId,
-    ) -> Option<&BuildingLocation> {
-        self.building_locations.iter().find(|bl| {
+    pub fn get_available_building_sites<'a>(
+        &'a self,
+        size: &'a SlotSize,
+        type_id: &'a UnitTypeId,
+    ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
+        self.building_locations.iter().filter(|bl| {
             let fits_intention = (bl.status.matches(type_id)) | (bl.status == BuildingStatus::Free);
             let fits_size = bl.size == *size;
             fits_size && fits_intention
@@ -227,7 +280,7 @@ impl SitingDirector {
         self.building_locations
             .iter()
             .filter(|bl| {
-                let fits_intention = bl.status.matches(type_id);
+                let fits_intention = bl.status.matches(&type_id);
                 let fits_size = bl.size == *size;
                 fits_size && fits_intention
             })
@@ -245,77 +298,71 @@ impl SitingDirector {
         .collect()
     }
 
-    pub fn modified_artosis_pattern(top_pylon_point: Point2) -> Vec<BuildingLocation> {
+    fn flip_x(x: (f32, f32)) -> (f32, f32) {
+        (-x.0, x.1)
+    }
+
+    fn flip_y(x: (f32, f32)) -> (f32, f32) {
+        (x.0, -x.1)
+    }
+
+    fn mirror_to_four_quadrants(offsets: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
+        let top_two = offsets
+            .iter()
+            .map(|p| Self::flip_x(*p))
+            .chain(offsets.clone());
+        let all_four = top_two.clone().map(Self::flip_y).chain(top_two);
+        all_four.collect()
+    }
+
+    pub fn modified_artosis_pattern(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
+        let pylon_width = pylon_radius * 2.0;
         let standard_radius = SlotSize::Standard.radius();
         let standard_width = standard_radius * 2.0;
 
-        let top_half_offsets = [
-            (-pylon_radius - standard_radius, -pylon_radius), // left adjacent to pylon
+        let top_pylon_point = Point2::new(0.0, pylon_radius);
+
+        let first_quadrant_building_offsets = [
+            (pylon_radius + standard_radius, -pylon_radius),
             (
-                // left of the one above
-                -pylon_radius - standard_radius - standard_width,
+                pylon_radius + standard_radius + standard_radius,
                 -pylon_radius,
             ),
+            (standard_radius, pylon_radius + standard_radius),
             (
-                // up left from pylon
-                -standard_radius,
-                pylon_radius + standard_radius,
-            ),
-            (
-                // left of above
-                -standard_radius - standard_width,
-                pylon_radius + standard_radius,
-            ),
-            (pylon_radius + standard_radius, -pylon_radius), // right adjacent to pylon
-            (
-                // right of the one above
-                pylon_radius + standard_radius + standard_width,
-                -pylon_radius,
-            ),
-            (
-                // up right from pylon
-                standard_radius,
-                pylon_radius + standard_radius,
-            ),
-            (
-                // right of above
-                standard_radius + standard_width,
+                standard_radius + standard_radius,
                 pylon_radius + standard_radius,
             ),
         ]
         .into_iter()
-        .map(|(x, y)| Point2::new(x, y));
-        let bottom_half_offsets = top_half_offsets
-            .clone()
-            .map(|p| p.rotate(180.0).offset(0.0, pylon_radius * 4.0));
+        .map(|(x, y)| (x + top_pylon_point.x, y + top_pylon_point.y));
 
-        let bottom_pylon_point = top_pylon_point.offset(0.0, -pylon_radius * 4.0);
-        let pylons: Vec<BuildingLocation> = [
-            top_pylon_point,
-            top_pylon_point.offset(-(2.0 * standard_width), standard_width), // top far left
-            top_pylon_point.offset(2.0 * standard_width, standard_width),    // top far right
-            bottom_pylon_point,
-            bottom_pylon_point.offset(-(2.0 * standard_width), -standard_width), // top far left
-            bottom_pylon_point.offset(2.0 * standard_width, -standard_width),    // top far right
-        ]
-        .into_iter()
-        .map(|p| BuildingLocation::new(p, SlotSize::Small, Some(UnitTypeId::Pylon)))
-        .collect();
+        let all_building_points =
+            Self::mirror_to_four_quadrants(first_quadrant_building_offsets.collect())
+                .into_iter()
+                .map(|(x, y)| center_point.offset(x, y));
 
-        let full: Vec<BuildingLocation> = top_half_offsets
-            .chain(bottom_half_offsets)
-            .map(|point| BuildingLocation::new(point, SlotSize::Standard, None))
-            .chain(pylons)
+        let first_quadrant_pylon_offset = [(2.0 * standard_width + pylon_radius, pylon_width)];
+        let all_pylon_points = Self::mirror_to_four_quadrants(first_quadrant_pylon_offset.to_vec())
+            .into_iter()
+            .map(|(x, y)| center_point.offset(x, y));
+
+        let mut pylons: Vec<BuildingLocation> = all_pylon_points
+            .map(|p| BuildingLocation::new(p, SlotSize::Small, Some(UnitTypeId::Pylon)))
+            .collect();
+        let mut buildings: Vec<BuildingLocation> = all_building_points
+            .map(|p| BuildingLocation::new(p, SlotSize::Standard, None))
             .collect();
 
-        full
+        buildings.append(&mut pylons);
+        buildings
     }
 
     pub fn add_pylon_site(&mut self, location: Point2) {
         let pl = BuildingLocation::new(location, SlotSize::Small, Some(UnitTypeId::Pylon));
         self.building_locations
-            .append(&mut Self::generic_build_location_pattern(location));
+            .append(&mut Self::modified_artosis_pattern(location));
         self.building_locations.push(pl);
     }
 
@@ -354,10 +401,10 @@ impl ReBiCycler {
 
         let position = self
             .siting_director
-            .get_available_building_site(&size, structure_type)
-            .ok_or(BuildError::NoPlacementLocations)?;
+            .get_available_building_sites(&size, &structure_type)
+            .find(|bl| self.validate_build_location(bl, structure_type));
 
-        if self.validate_build_location(position, structure_type) {
+        if let Some(position) = position {
             let builder = self
                 .units
                 .my
@@ -366,10 +413,40 @@ impl ReBiCycler {
                 .ok_or(BuildError::NoTrainer)?;
             builder.build(structure_type, position.location, false);
             builder.sleep(5);
+            println!("Build command sent: {structure_type:?}");
             Ok(())
         } else {
-            Err(BuildError::CantPlace(position.location, structure_type))
+            Err(BuildError::NoPlacementLocations)
         }
+    }
+    pub fn validate_building_locations(&mut self) {
+        let blockers: Vec<bool> = self
+            .siting_director
+            .building_locations
+            .iter()
+            .map(|bl| {
+                self.validate_build_location(
+                    bl,
+                    if let BuildingStatus::Intended(type_id) = bl.status {
+                        type_id
+                    } else {
+                        bl.size.default_checker()
+                    },
+                )
+            })
+            .collect();
+
+        let _: () = self
+            .siting_director
+            .building_locations
+            .iter_mut()
+            .zip(blockers)
+            .map(|(bl, cp)| {
+                if !cp {
+                    bl.mark_blocked();
+                }
+            })
+            .collect();
     }
 
     fn validate_build_location(
@@ -386,11 +463,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn expansion_template_places_12_buildings() {
+    fn intersect_ok() {
         let origin = Point2::new(0.0, 0.0);
-        let mut sd = SitingDirector::default();
+        let two_over = Point2::new(2.0, 0.0);
+        let bl1 = BuildingLocation::new(origin, SlotSize::Small, None);
+        let bl2 = BuildingLocation::new(two_over, SlotSize::Small, None);
 
-        sd.build_expansion_template(origin, Point2::new(-5.0, -5.0), Point2::new(10.0, 10.0));
-        assert_eq!(sd.building_locations.len(), 12);
+        assert!(!bl1.intersects_other(&bl2));
+    }
+
+    #[test]
+    fn artosis_pattern_places_well() {
+        let origin = Point2::new(0.0, 0.0);
+
+        let buildings = SitingDirector::modified_artosis_pattern(origin);
+        for (i, b) in buildings.iter().enumerate() {
+            for (oi, ob) in buildings.iter().enumerate() {
+                assert!(
+                    !b.intersects_other(ob),
+                    "intersecting: [{i}] {b}, [{oi}] {ob}"
+                );
+            }
+        }
     }
 }

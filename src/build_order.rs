@@ -77,7 +77,7 @@ pub enum BuildCondition {
     LessThanCount(UnitTypeId, usize),
     AtLeastCount(UnitTypeId, usize),
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildOrderAction {
     Train(UnitTypeId, AbilityId),
     Construct(UnitTypeId),
@@ -103,6 +103,11 @@ impl fmt::Display for Policy {
             "{}, {:?}, {:?}",
             self.active, self.action, self.conditions
         )
+    }
+}
+impl fmt::Debug for Policy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
     }
 }
 impl Policy {
@@ -166,19 +171,29 @@ impl ReBiCycler {
     }
 
     fn check_policies(&mut self) {
-        let doable_policies: Vec<Policy> = self
+        let conditions_met: Vec<Policy> = self
             .bom
             .policies
             .iter()
-            .filter(|policy| {
-                policy.active
-                    && self.evaluate_conditions(&policy.conditions)
-                    && self.can_do_build_action(&policy.action)
-            })
+            .filter(|policy| policy.active && self.evaluate_conditions(&policy.conditions))
             .cloned()
             .collect();
-
-        let _: () = doable_policies
+        println!("Active & conditions met: {conditions_met:?}");
+        let doable_policies: Vec<Policy> = conditions_met
+            .iter()
+            .filter(|policy| self.can_do_build_action(&policy.action))
+            .cloned()
+            .collect();
+        if doable_policies.is_empty() {
+            println!("|!| No doable policies!");
+        }
+        if doable_policies
+            .iter()
+            .any(|policy| policy.action == BuildOrderAction::Construct(UnitTypeId::Gateway))
+        {
+            println!("|!| We could do a gatewayyyy");
+        }
+        let _: () = conditions_met
             .iter()
             .map(|policy| self.attempt_build_action(&policy.action))
             .collect();
@@ -191,27 +206,31 @@ impl ReBiCycler {
                 self.supply_used >= *low && self.supply_used < *high
             }
             BuildCondition::LessThanCount(unit_type, desired_count) => {
-                let unit_count = self.counter().ordered().count(*unit_type);
+                let unit_count = self.counter().all().count(*unit_type);
                 unit_count < *desired_count
             }
             BuildCondition::SupplyLeftBelow(remaining_supply) => {
                 self.supply_left < *remaining_supply
             }
-            BuildCondition::StructureComplete(structure_type) => self
-                .units
-                .my
-                .structures
-                .iter()
-                .ready()
-                .any(|u| u.type_id() == *structure_type),
+            BuildCondition::StructureComplete(structure_type) => {
+                self.units
+                    .my
+                    .structures
+                    .of_type(*structure_type)
+                    .iter()
+                    .ready()
+                    .count()
+                    > 0
+            }
             BuildCondition::TechComplete(upgrade) => self.upgrade_progress(*upgrade) > 0.95,
             BuildCondition::AtLeastCount(unit_type, desired_count) => {
-                self.counter().ordered().count(*unit_type) >= *desired_count
+                self.counter().all().count(*unit_type) >= *desired_count
             }
         })
     }
 
     fn attempt_build_action(&mut self, action: &BuildOrderAction) {
+        //println!("Attempting a policy! {action:?}");
         let result = match action {
             BuildOrderAction::Construct(unit_type) => self.build(*unit_type),
             BuildOrderAction::Train(unit_type, _) => self.train(*unit_type),
@@ -230,6 +249,8 @@ impl ReBiCycler {
                 }
                 _ => println!("Build order blocked: {action:?} > {err:?}"),
             }
+        } else {
+            println!("BuildOrderAction OK: {action:?}");
         }
     }
 

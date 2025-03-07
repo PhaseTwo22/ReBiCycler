@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::base_manager::BaseManager;
 use crate::build_order::BuildOrderManager;
 use crate::siting::SitingDirector;
@@ -23,6 +25,8 @@ impl Player for ReBiCycler {
 
         self.siting_director
             .initialize_global_placement(self.expansions.clone().as_slice(), map_center);
+        println!("Building templates placed: {:?}", self.siting_director);
+        self.validate_building_locations();
 
         println!("Global siting complete: {:?}", self.siting_director);
 
@@ -46,6 +50,10 @@ impl Player for ReBiCycler {
                 "Step step step {}, M:{}, G:{}, S:{}/{}",
                 frame_no, self.minerals, self.vespene, self.supply_used, self.supply_cap
             );
+            let unit_types: HashSet<UnitTypeId> =
+                self.units.my.all.iter().map(Unit::type_id).collect();
+            println!("Unit types: {unit_types:?}");
+
             self.step_build();
         };
         if frame_no >= 6000 && frame_no % 100 == 0 {
