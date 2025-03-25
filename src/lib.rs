@@ -2,7 +2,8 @@ use rust_sc2::prelude::*;
 use std::fmt::Debug;
 
 mod base_manager;
-mod build_order;
+mod build_order_manager;
+mod build_orders;
 mod errors;
 mod knowledge;
 pub mod protoss_bot;
@@ -41,7 +42,7 @@ pub fn closest_point<T: Iterator<Item = Point2>>(target: Point2, population: T) 
         .map(|(point, _dist)| point)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Tag {
     tag: u64,
     type_id: UnitTypeId,
@@ -61,4 +62,31 @@ impl Tag {
             type_id: UnitTypeId::NotAUnit,
         }
     }
+}
+#[must_use]
+pub const fn is_protoss_building(unit: UnitTypeId) -> bool {
+    matches!(
+        unit,
+        UnitTypeId::Nexus
+            | UnitTypeId::Assimilator
+            | UnitTypeId::AssimilatorRich
+            | UnitTypeId::Pylon
+            | UnitTypeId::Gateway
+            | UnitTypeId::WarpGate
+            | UnitTypeId::Forge
+            | UnitTypeId::FleetBeacon
+            | UnitTypeId::TwilightCouncil
+            | UnitTypeId::PhotonCannon
+            | UnitTypeId::Stargate
+            | UnitTypeId::TemplarArchive
+            | UnitTypeId::DarkShrine
+            | UnitTypeId::RoboticsBay
+            | UnitTypeId::RoboticsFacility
+            | UnitTypeId::CyberneticsCore
+            | UnitTypeId::ShieldBattery
+    )
+}
+#[must_use]
+pub const fn is_assimilator(unit: UnitTypeId) -> bool {
+    matches!(unit, UnitTypeId::Assimilator | UnitTypeId::AssimilatorRich)
 }
