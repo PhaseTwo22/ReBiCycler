@@ -26,4 +26,5 @@ pub enum BuildError {
     NoTrainer,
     AlreadyResearching,
     NoBuildItemsLeft,
+    WarpGateNotResearched,
 }

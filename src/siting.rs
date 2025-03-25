@@ -14,8 +14,8 @@ const EXPANSION_NAMES: [&str; 48] = [
     "Λ\'", "Μ\'", "Ν\'", "Ξ\'", "Ο\'", "Π\'", "Ρ\'", "Σ\'", "Τ\'", "Υ\'", "Φ\'", "Χ\'", "Ψ\'",
     "Ω\'",
 ];
-#[derive(PartialEq, Debug, Clone)]
-enum BuildingStatus {
+#[derive(PartialEq, Debug, Clone, Eq)]
+pub enum BuildingStatus {
     Blocked,
     Intended(UnitTypeId),
     Built(Tag),
@@ -28,7 +28,7 @@ impl BuildingStatus {
 }
 
 const PYLON_DISTANCE_FROM_NEXUS: f32 = 9.0;
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Eq)]
 pub struct BuildingLocation {
     pub location: Point2,
     status: BuildingStatus,
@@ -203,39 +203,22 @@ impl SitingDirector {
     }
 
     pub fn construction_begin(&mut self, tag: Tag, location: Point2) -> Result<(), BuildError> {
-        match tag.type_id {
-            UnitTypeId::Nexus
-            | UnitTypeId::Pylon
-            | UnitTypeId::Assimilator
-            | UnitTypeId::AssimilatorRich
-            | UnitTypeId::Gateway
-            | UnitTypeId::WarpGate
-            | UnitTypeId::Forge
-            | UnitTypeId::FleetBeacon
-            | UnitTypeId::TwilightCouncil
-            | UnitTypeId::PhotonCannon
-            | UnitTypeId::Stargate
-            | UnitTypeId::TemplarArchive
-            | UnitTypeId::DarkShrine
-            | UnitTypeId::RoboticsBay
-            | UnitTypeId::RoboticsFacility
-            | UnitTypeId::CyberneticsCore
-            | UnitTypeId::ShieldBattery => Ok(()),
-            _ => Err(BuildError::InvalidUnit(format!(
-                "{:?} at {:?}",
-                tag.type_id, location
-            ))),
-        }?;
-        let has_spot = self
-            .building_locations
-            .iter_mut()
-            .find(|bl| bl.location == location);
-        if let Some(spot) = has_spot {
-            spot.build(tag);
+        if crate::is_protoss_building(tag.type_id) && !crate::is_assimilator(tag.type_id) {
             Ok(())
         } else {
-            Err(BuildError::CantPlace(location, tag.type_id))
-        }
+            Err(BuildError::InvalidUnit(format!(
+                "{:?} at {:?}",
+                tag.type_id, location
+            )))
+        }?;
+
+        self.building_locations
+            .iter_mut()
+            .find(|bl| bl.location == location)
+            .map_or(Err(BuildError::NoBuildingLocationHere(location)), |spot| {
+                spot.build(tag);
+                Ok(())
+            })
     }
 
     pub fn mark_position_blocked(&mut self, location: Point2) -> Result<(), BuildError> {
@@ -269,7 +252,7 @@ impl SitingDirector {
         let _: () = places
             .iter()
             .flatten()
-            .map(|p| self.add_pylon_site(*p))
+            .map(|p| self.add_pylon_site(p.round()))
             .collect();
 
         self.building_locations.push(BuildingLocation {
@@ -375,7 +358,7 @@ impl SitingDirector {
     pub fn find_and_destroy_building(&mut self, building: &Tag) -> Result<(), BuildError> {
         self.building_locations
             .iter_mut()
-            .find(|l| l.status == BuildingStatus::Built(building.clone()))
+            .find(|l| l.status == BuildingStatus::Built(*building))
             .ok_or_else(|| {
                 BuildError::InvalidUnit(format!("couldn't find building to destroy: {building:?}"))
             })?
@@ -422,6 +405,19 @@ impl ReBiCycler {
             Err(BuildError::NoPlacementLocations)
         }
     }
+    /// Tells a base with a free geyser to build an assimilator.
+    /// # Errors
+    /// `BuildError::NoPlacementLocations` when no geysers are free at any base.
+    pub fn build_gas(&self) -> Result<(), BuildError> {
+        let base = self
+            .base_managers
+            .iter()
+            .find(|bm| bm.get_free_geyser().is_some())
+            .ok_or(BuildError::NoPlacementLocations)?;
+
+        self.take_gas(base.location)
+    }
+
     pub fn validate_building_locations(&mut self) {
         let blockers: Vec<bool> = self
             .siting_director

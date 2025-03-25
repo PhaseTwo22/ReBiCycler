@@ -1,8 +1,12 @@
-use core::fmt;
+use std::f32::consts::TAU;
 
-use rust_sc2::prelude::*;
+use rust_sc2::{game_state::PsionicMatrix, prelude::*};
 
-use crate::{errors::BuildError, protoss_bot::ReBiCycler};
+use crate::{
+    build_orders::{BuildCondition, BuildOrderAction, BuildOrderComponent},
+    errors::BuildError,
+    protoss_bot::ReBiCycler,
+};
 
 /// This module serves to manage our build orders.
 /// We want to use kiss principle here, but still have a flexible system.
@@ -12,134 +16,47 @@ use crate::{errors::BuildError, protoss_bot::ReBiCycler};
 /// Policies can be active and inactive.
 
 #[derive(Default)]
-pub struct BuildOrderManager {
-    pub policies: Vec<Policy>,
-    pub build_order: Vec<BuildOrderComponent>,
-}
+pub struct BuildOrder(pub Vec<BuildOrderComponent>);
 
-impl BuildOrderManager {
-    pub fn new() -> Self {
-        use BuildCondition::{
-            AtLeastCount, LessThanCount, StructureComplete, SupplyBetween, SupplyLeftBelow,
-        };
-        use BuildOrderAction::{Chrono, Construct, Train};
-        use UnitTypeId::{Gateway, Probe, Pylon};
-        Self {
-            policies: vec![
-                Policy::new(
-                    Train(Probe, AbilityId::NexusTrainProbe),
-                    vec![LessThanCount(Probe, 14), LessThanCount(Pylon, 1)],
-                ),
-                Policy::new(
-                    Train(Probe, AbilityId::NexusTrainProbe),
-                    vec![
-                        StructureComplete(UnitTypeId::Pylon),
-                        LessThanCount(Probe, 48),
-                    ],
-                ),
-                Policy::new(
-                    Construct(Pylon),
-                    vec![AtLeastCount(Probe, 13), SupplyLeftBelow(4)],
-                ),
-                Policy::new(
-                    Construct(Gateway),
-                    vec![StructureComplete(Pylon), LessThanCount(Gateway, 4)],
-                ),
-                Policy::new(
-                    Chrono(AbilityId::NexusTrainProbe),
-                    vec![SupplyBetween(16, 48)],
-                ),
-            ],
-            build_order: Vec::new(),
-        }
+impl BuildOrder {
+    pub const fn empty() -> Self {
+        Self(Vec::new())
     }
 
-    pub fn get_next_component(&self) -> Option<BuildOrderComponent> {
-        Some(self.build_order.first()?.clone())
-    }
-
-    pub fn mark_component_done(&mut self) {
-        self.build_order.remove(0);
-    }
-
-    pub fn add_component(&mut self, component: BuildOrderComponent) {
-        self.build_order.push(component);
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum BuildCondition {
-    SupplyAtLeast(u32),
-    SupplyBetween(u32, u32),
-    SupplyLeftBelow(u32),
-    TechComplete(UpgradeId),
-    StructureComplete(UnitTypeId),
-    LessThanCount(UnitTypeId, usize),
-    AtLeastCount(UnitTypeId, usize),
-    DontHaveAnyDone(UnitTypeId),
-    DontHaveAnyStarted(UnitTypeId),
-}
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BuildOrderAction {
-    Train(UnitTypeId, AbilityId),
-    Construct(UnitTypeId),
-    Chrono(AbilityId),
-    Research(UpgradeId, UnitTypeId, AbilityId),
-    Expand,
-}
-#[derive(Clone)]
-pub struct BuildOrderComponent {
-    pub conditions: Vec<BuildCondition>,
-    pub action: BuildOrderAction,
-}
-
-#[derive(Clone)]
-pub struct Policy {
-    pub action: BuildOrderAction,
-    pub active: bool,
-    pub conditions: Vec<BuildCondition>,
-}
-impl fmt::Display for Policy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}, {:?}, {:?}",
-            self.active, self.action, self.conditions
-        )
-    }
-}
-impl fmt::Debug for Policy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self}")
-    }
-}
-impl Policy {
-    const fn new(action: BuildOrderAction, conditions: Vec<BuildCondition>) -> Self {
-        Self {
-            action,
-            conditions,
-            active: true,
-        }
+    pub fn iter(&self) -> impl Iterator<Item = &BuildOrderComponent> {
+        self.0.iter()
     }
 }
 
 impl ReBiCycler {
     pub fn step_build(&mut self) {
         self.progress_build();
-        self.check_policies();
     }
 
-    fn progress_build(&mut self) -> Option<()> {
-        let next_task = self.bom.get_next_component()?;
-        if self.evaluate_conditions(&next_task.conditions)
-            && self.can_do_build_action(&next_task.action)
-        {
-            self.attempt_build_action(&next_task.action);
+    fn progress_build(&mut self) {
+        let started_tasks = self
+            .build_order
+            .iter()
+            .filter(|boc| self.evaluate_conditions(&boc.start_conditions));
+        let started_and_not_finished =
+            started_tasks.filter(|boc| !self.evaluate_conditions(&boc.end_conditions));
+
+        let valid_and_doable: Vec<BuildOrderAction> = started_and_not_finished
+            .filter_map(|boc| {
+                if self.can_do_build_action(boc.action) {
+                    Some(boc.action)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for action in valid_and_doable {
+            self.attempt_build_action(action);
         }
-        None
     }
 
-    fn can_do_build_action(&self, action: &BuildOrderAction) -> bool {
+    fn can_do_build_action(&self, action: BuildOrderAction) -> bool {
         match action {
             BuildOrderAction::Expand => self.can_afford(UnitTypeId::Nexus, false),
             BuildOrderAction::Chrono(_) => self
@@ -149,7 +66,7 @@ impl ReBiCycler {
                 .iter()
                 .any(|n| n.has_ability(AbilityId::EffectChronoBoostEnergyCost)),
             BuildOrderAction::Construct(building) => {
-                let afford = self.can_afford(*building, true);
+                let afford = self.can_afford(building, true);
                 let has_worker = !self.units.my.workers.is_empty();
                 afford && has_worker
             }
@@ -157,10 +74,10 @@ impl ReBiCycler {
                 self.units
                     .my
                     .structures
-                    .of_type(*reseacher)
+                    .of_type(reseacher)
                     .idle()
                     .is_empty()
-                    && self.can_afford_upgrade(*upgrade)
+                    && self.can_afford_upgrade(upgrade)
             }
             BuildOrderAction::Train(_, ability) => {
                 let has_trainer = self
@@ -168,38 +85,10 @@ impl ReBiCycler {
                     .my
                     .structures
                     .iter()
-                    .any(|s| s.has_ability(*ability));
+                    .any(|s| s.has_ability(ability));
                 has_trainer
             }
         }
-    }
-
-    fn check_policies(&mut self) {
-        let conditions_met: Vec<Policy> = self
-            .bom
-            .policies
-            .iter()
-            .filter(|policy| policy.active && self.evaluate_conditions(&policy.conditions))
-            .cloned()
-            .collect();
-        let doable_policies: Vec<Policy> = conditions_met
-            .iter()
-            .filter(|policy| self.can_do_build_action(&policy.action))
-            .cloned()
-            .collect();
-        if doable_policies.is_empty() {
-            println!("[!] No doable policies!");
-        }
-        if doable_policies
-            .iter()
-            .any(|policy| policy.action == BuildOrderAction::Construct(UnitTypeId::Gateway))
-        {
-            println!("[!] We could do a gatewayyyy");
-        }
-        let _: () = conditions_met
-            .iter()
-            .map(|policy| self.attempt_build_action(&policy.action))
-            .collect();
     }
 
     fn evaluate_conditions(&self, conditions: &[BuildCondition]) -> bool {
@@ -234,21 +123,22 @@ impl ReBiCycler {
         })
     }
 
-    fn attempt_build_action(&mut self, action: &BuildOrderAction) {
+    fn attempt_build_action(&mut self, action: BuildOrderAction) {
         //println!("Attempting a policy! {action:?}");
         let result = match action {
             BuildOrderAction::Expand => {
                 self.validate_building_locations();
                 self.build(UnitTypeId::Nexus)
             }
+            BuildOrderAction::Construct(UnitTypeId::Assimilator) => self.build_gas(),
             BuildOrderAction::Construct(unit_type) => {
                 self.validate_building_locations();
-                self.build(*unit_type)
+                self.build(unit_type)
             }
-            BuildOrderAction::Train(unit_type, _) => self.train(*unit_type),
-            BuildOrderAction::Chrono(ability) => self.chrono_boost(*ability),
+            BuildOrderAction::Train(unit_type, _) => self.train(unit_type),
+            BuildOrderAction::Chrono(ability) => self.chrono_boost(ability),
             BuildOrderAction::Research(upgrade, researcher, ability) => {
-                self.research(*researcher, *upgrade, *ability)
+                self.research(researcher, upgrade, ability)
             }
         };
 
@@ -267,13 +157,88 @@ impl ReBiCycler {
     }
 
     fn train(&self, unit_type: UnitTypeId) -> Result<(), BuildError> {
-        self.units
+        if self.has_upgrade(UpgradeId::WarpGateResearch) {
+            self.warp_in(unit_type)
+        } else {
+            self.units
+                .my
+                .townhalls
+                .idle()
+                .iter()
+                .next()
+                .ok_or(BuildError::NoTrainer)?
+                .train(unit_type, false);
+            Ok(())
+        }
+    }
+
+    fn warp_in(&self, unit_type: UnitTypeId) -> Result<(), BuildError> {
+        let unit_width = 2.0;
+        if !self.has_upgrade(UpgradeId::WarpGateResearch) {
+            return Err(BuildError::WarpGateNotResearched);
+        }
+        let booster_structures = self.units.my.all.of_types(&vec![
+            UnitTypeId::Pylon,
+            UnitTypeId::Nexus,
+            UnitTypeId::WarpPrismPhasing,
+        ]);
+
+        let idle_warpgates = self
+            .units
             .my
-            .townhalls
-            .first()
-            .ok_or(BuildError::NoTrainer)?
-            .train(unit_type, false);
-        Ok(())
+            .structures
+            .idle()
+            .of_type(UnitTypeId::WarpGate);
+        let warpgate = idle_warpgates.first().ok_or(BuildError::NoTrainer)?;
+
+        let is_fast = |matrix: &&PsionicMatrix| {
+            !booster_structures
+                .closer(matrix.radius, matrix.pos)
+                .is_empty()
+        };
+
+        let fast_warpins = self
+            .state
+            .observation
+            .raw
+            .psionic_matrix
+            .iter()
+            .filter(is_fast);
+
+        for matrix in fast_warpins {
+            if self
+                .warp_spot_spiral_search(matrix, warpgate, unit_type, unit_width)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+        Err(BuildError::NoPlacementLocations)
+    }
+
+    fn warp_spot_spiral_search(
+        &self,
+        matrix: &PsionicMatrix,
+        warpgate: &Unit,
+        unit_type: UnitTypeId,
+        unit_width: f32,
+    ) -> Result<(), BuildError> {
+        let possible_rings = (matrix.radius / unit_width).floor();
+        for ring_number in 1..possible_rings as i32 {
+            let circumference = TAU * matrix.radius * (ring_number as f32 / possible_rings);
+            let possible_angles = (circumference / unit_width).floor();
+            for angle_step in 0..possible_angles as i32 {
+                let angle = TAU * angle_step as f32 / possible_angles;
+                let offset = Point2::new(ring_number as f32 * unit_width, 0.0).rotate(angle);
+
+                let spot = matrix.pos + offset;
+                if self.is_pathable(spot) && self.is_placeable(spot) {
+                    warpgate.warp_in(unit_type, spot);
+                    return Ok(());
+                }
+            }
+        }
+        Err(BuildError::NoPlacementLocations)
     }
 
     fn chrono_boost(&self, ability: AbilityId) -> Result<(), BuildError> {
