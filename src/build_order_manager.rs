@@ -241,6 +241,75 @@ impl ReBiCycler {
         Err(BuildError::NoPlacementLocations)
     }
 
+    fn warp_in(&self, unit_type: UnitTypeId) -> Result<(), BuildError> {
+        let unit_width = 2.0;
+        if !self.has_upgrade(UpgradeId::WarpGateResearch) {
+            return Err(BuildError::WarpGateNotResearched);
+        }
+        let booster_structures = self.units.my.all.of_types(&vec![
+            UnitTypeId::Pylon,
+            UnitTypeId::Nexus,
+            UnitTypeId::WarpPrismPhasing,
+        ]);
+
+        let idle_warpgates = self
+            .units
+            .my
+            .structures
+            .idle()
+            .of_type(UnitTypeId::WarpGate);
+        let warpgate = idle_warpgates.first().ok_or(BuildError::NoTrainer)?;
+
+        let is_fast = |matrix: &&PsionicMatrix| {
+            !booster_structures
+                .closer(matrix.radius, matrix.pos)
+                .is_empty()
+        };
+
+        let fast_warpins = self
+            .state
+            .observation
+            .raw
+            .psionic_matrix
+            .iter()
+            .filter(is_fast);
+
+        for matrix in fast_warpins {
+            if self
+                .warp_spot_spiral_search(matrix, warpgate, unit_type, unit_width)
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+        Err(BuildError::NoPlacementLocations)
+    }
+
+    fn warp_spot_spiral_search(
+        &self,
+        matrix: &PsionicMatrix,
+        warpgate: &Unit,
+        unit_type: UnitTypeId,
+        unit_width: f32,
+    ) -> Result<(), BuildError> {
+        let possible_rings = (matrix.radius / unit_width).floor();
+        for ring_number in 1..possible_rings as i32 {
+            let circumference = TAU * matrix.radius * (ring_number as f32 / possible_rings);
+            let possible_angles = (circumference / unit_width).floor();
+            for angle_step in 0..possible_angles as i32 {
+                let angle = TAU * angle_step as f32 / possible_angles;
+                let offset = Point2::new(ring_number as f32 * unit_width, 0.0).rotate(angle);
+
+                let spot = matrix.pos + offset;
+                if self.is_pathable(spot) && self.is_placeable(spot) {
+                    warpgate.warp_in(unit_type, spot);
+                    return Ok(());
+                }
+            }
+        }
+        Err(BuildError::NoPlacementLocations)
+    }
+
     fn chrono_boost(&self, ability: AbilityId) -> Result<(), BuildError> {
         let nexus = self
             .units
