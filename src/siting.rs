@@ -1,12 +1,12 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display},
+    iter::once,
 };
 
 use crate::{errors::BuildError, protoss_bot::ReBiCycler, Tag};
 use rust_sc2::{bot::Expansion, prelude::*};
 
-const PYLON_POWER_DISTANCE: f32 = 6.5;
 #[allow(dead_code)]
 const EXPANSION_NAMES: [&str; 48] = [
     "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ", "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ",
@@ -22,8 +22,8 @@ enum BuildingStatus {
     Free,
 }
 impl BuildingStatus {
-    pub fn matches(&self, type_id: &UnitTypeId) -> bool {
-        *self == Self::Free || *self == Self::Intended(*type_id)
+    pub fn matches(&self, type_id: UnitTypeId) -> bool {
+        *self == Self::Free || *self == Self::Intended(type_id)
     }
 }
 
@@ -81,7 +81,7 @@ impl BuildingLocation {
         other
             .get_four_corners()
             .iter()
-            .chain([other.location].iter())
+            .chain(once(&other.location))
             .any(|p| self.inside_corners(*p))
     }
     fn inside_corners(&self, point: Point2) -> bool {
@@ -143,7 +143,7 @@ impl SlotSize {
         }
     }
 
-    const fn radius(&self) -> f32 {
+    const fn radius(self) -> f32 {
         match self {
             Self::Tumor => 0.5,
             Self::Small => 1.0,
@@ -152,11 +152,11 @@ impl SlotSize {
         }
     }
 
-    const fn width(&self) -> f32 {
+    const fn width(self) -> f32 {
         self.radius() * 2.0
     }
 
-    const fn default_checker(&self) -> UnitTypeId {
+    const fn default_checker(self) -> UnitTypeId {
         match self {
             Self::Tumor => UnitTypeId::CreepTumor,
             Self::Small => UnitTypeId::SupplyDepot,
@@ -285,7 +285,8 @@ impl SitingDirector {
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
         self.building_locations.iter().filter(|bl| {
-            let fits_intention = (bl.status.matches(type_id)) | (bl.status == BuildingStatus::Free);
+            let fits_intention =
+                (bl.status.matches(*type_id)) | (bl.status == BuildingStatus::Free);
             let fits_size = bl.size == *size;
             fits_size && fits_intention
         })
@@ -293,7 +294,7 @@ impl SitingDirector {
 
     pub fn get_available_building_site_prioritized<F>(
         &self,
-        size: &SlotSize,
+        size: SlotSize,
         type_id: UnitTypeId,
         priority_closure: F,
     ) -> Option<&BuildingLocation>
@@ -303,48 +304,20 @@ impl SitingDirector {
         self.building_locations
             .iter()
             .filter(|bl| {
-                let fits_intention = bl.status.matches(&type_id);
-                let fits_size = bl.size == *size;
+                let fits_intention = bl.status.matches(type_id);
+                let fits_size = bl.size == size;
                 fits_size && fits_intention
             })
             .min_by(priority_closure)
     }
 
-    fn generic_build_location_pattern(pylon_point: Point2) -> Vec<BuildingLocation> {
-        [
-            pylon_point.offset(2.0, 0.0),
-            pylon_point.offset(2.0, 2.0),
-            pylon_point.offset(2.0, 2.0),
-        ]
-        .iter()
-        .map(|p| BuildingLocation::new(*p, SlotSize::Standard, None))
-        .collect()
-    }
-
-    fn flip_x(x: (f32, f32)) -> (f32, f32) {
-        (-x.0, x.1)
-    }
-
-    fn flip_y(x: (f32, f32)) -> (f32, f32) {
-        (x.0, -x.1)
-    }
-
-    fn mirror_to_four_quadrants(offsets: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
-        let top_two = offsets
-            .iter()
-            .map(|p| Self::flip_x(*p))
-            .chain(offsets.clone());
-        let all_four = top_two.clone().map(Self::flip_y).chain(top_two);
-        all_four.collect()
-    }
-
-    fn rotate_to_four_quadrants(offsets: Vec<Point2>) -> Vec<Point2> {
+    fn rotate_to_four_quadrants(offsets: &[Point2]) -> Vec<Point2> {
         let rotato = |point: &Point2| {
             vec![
-                point.clone(),
-                point.clone().rotate90(true),
-                point.clone().rotate90(true).rotate90(true),
-                point.clone().rotate90(false),
+                *point,
+                point.rotate90(true),
+                point.rotate90(true).rotate90(true),
+                point.rotate90(false),
             ]
         };
 
@@ -353,7 +326,7 @@ impl SitingDirector {
 
     pub fn pylon_flower(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
-        let pylon_width = pylon_radius * 2.0;
+        let pylon_width = SlotSize::Small.width();
         let standard_radius = SlotSize::Standard.radius();
 
         let to_the_right = vec![Point2::new(
@@ -361,7 +334,7 @@ impl SitingDirector {
             standard_radius - pylon_width,
         )];
 
-        Self::rotate_to_four_quadrants(to_the_right)
+        Self::rotate_to_four_quadrants(&to_the_right)
             .iter()
             .map(|point| {
                 BuildingLocation::new(*point, SlotSize::Standard, Some(UnitTypeId::Gateway))
@@ -372,9 +345,9 @@ impl SitingDirector {
 
     pub fn pylon_blossom(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
-        let pylon_width = pylon_radius * 2.0;
+        let pylon_width = SlotSize::Small.width();
         let standard_radius = SlotSize::Standard.radius();
-        let standard_width = standard_radius * 2.0;
+        let standard_width = SlotSize::Standard.width();
 
         let right_and_up = vec![
             Point2::new(
@@ -387,7 +360,7 @@ impl SitingDirector {
             ),
         ];
 
-        Self::rotate_to_four_quadrants(right_and_up)
+        Self::rotate_to_four_quadrants(&right_and_up)
             .iter()
             .map(|point| BuildingLocation::standard(center_point + *point))
             .chain(vec![BuildingLocation::pylon(center_point)])
@@ -471,11 +444,11 @@ impl ReBiCycler {
             .building_locations
             .iter_mut()
             .zip(blockers)
-            .map(|(bl, cp)| {
-                if !cp {
-                    bl.mark_blocked();
-                } else {
+            .map(|(bl, can_place)| {
+                if can_place {
                     bl.mark_free();
+                } else {
+                    bl.mark_blocked();
                 }
             })
             .collect();
@@ -488,15 +461,7 @@ impl ReBiCycler {
         build_location: &BuildingLocation,
         structure_type: UnitTypeId,
     ) -> bool {
-        let can = self.query_placement(
-            vec![(
-                self.game_data.units[&structure_type].ability.unwrap(),
-                build_location.location,
-                None,
-            )],
-            false,
-        );
-        can.unwrap()[0] == rust_sc2::action::ActionResult::Success
+        self.can_place(structure_type, build_location.location)
     }
 }
 
@@ -524,12 +489,12 @@ mod tests {
         assert_eq!(
             SitingDirector::pylon_flower(Point2 { x: 0.0, y: 0.0 }).len(),
             5
-        )
+        );
     }
 
-    fn buildings_intersect(buildings: Vec<BuildingLocation>) -> bool {
-        for a in buildings.iter() {
-            for b in buildings.iter() {
+    fn buildings_intersect(buildings: &[BuildingLocation]) -> bool {
+        for a in buildings {
+            for b in buildings {
                 if a == b {
                     continue;
                 }
@@ -538,7 +503,7 @@ mod tests {
                 }
             }
         }
-        return false;
+        false
     }
 
     #[test]
@@ -546,7 +511,7 @@ mod tests {
         let origin = Point2::new(0.0, 0.0);
         let buildings = SitingDirector::pylon_flower(origin);
 
-        assert!(!buildings_intersect(buildings))
+        assert!(!buildings_intersect(&buildings));
     }
 
     #[test]
@@ -554,6 +519,6 @@ mod tests {
         let origin = Point2::new(0.0, 0.0);
         let buildings = SitingDirector::pylon_blossom(origin);
 
-        assert!(!buildings_intersect(buildings))
+        assert!(!buildings_intersect(&buildings));
     }
 }
