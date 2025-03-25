@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 use crate::base_manager::BaseManager;
 use crate::build_order::BuildOrderManager;
@@ -50,36 +50,11 @@ impl Player for ReBiCycler {
                 "Step step step {}, M:{}, G:{}, S:{}/{}",
                 frame_no, self.minerals, self.vespene, self.supply_used, self.supply_cap
             );
-            let unit_types: HashSet<UnitTypeId> =
-                self.units.my.all.iter().map(Unit::type_id).collect();
-            println!("Unit types: {unit_types:?}");
+            self.count_unit_types();
 
             self.step_build();
         };
-        if frame_no >= 6000 && frame_no % 100 == 0 {
-            if let Some(structure) = self.units.my.structures.first() {
-                let _: () = self
-                    .units
-                    .my
-                    .workers
-                    .iter()
-                    .idle()
-                    .map(|w| w.attack(Target::Tag(structure.tag()), false))
-                    .collect();
 
-                let _: () = self
-                    .units
-                    .my
-                    .workers
-                    .iter()
-                    .map(|w| {
-                        if w.is_gathering() {
-                            w.attack(Target::Tag(structure.tag()), false);
-                        }
-                    })
-                    .collect();
-            }
-        }
         Ok(())
     }
 
@@ -175,5 +150,23 @@ impl ReBiCycler {
             game_started: false,
             ..Default::default()
         }
+    }
+
+    fn count_unit_types(&self) {
+        let mut counts: HashMap<UnitTypeId, usize> = HashMap::new();
+        let _: () = self
+            .units
+            .my
+            .all
+            .iter()
+            .map(|u| {
+                if let Some(so_far) = counts.get(&u.type_id()) {
+                    counts.insert(u.type_id(), so_far + 1)
+                } else {
+                    counts.insert(u.type_id(), 1)
+                };
+            })
+            .collect();
+        println!("Unit counts: {counts:?}");
     }
 }

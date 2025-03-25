@@ -76,6 +76,8 @@ pub enum BuildCondition {
     StructureComplete(UnitTypeId),
     LessThanCount(UnitTypeId, usize),
     AtLeastCount(UnitTypeId, usize),
+    DontHaveAnyDone(UnitTypeId),
+    DontHaveAnyStarted(UnitTypeId),
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildOrderAction {
@@ -83,6 +85,7 @@ pub enum BuildOrderAction {
     Construct(UnitTypeId),
     Chrono(AbilityId),
     Research(UpgradeId, UnitTypeId, AbilityId),
+    Expand,
 }
 #[derive(Clone)]
 pub struct BuildOrderComponent {
@@ -138,6 +141,7 @@ impl ReBiCycler {
 
     fn can_do_build_action(&self, action: &BuildOrderAction) -> bool {
         match action {
+            BuildOrderAction::Expand => self.can_afford(UnitTypeId::Nexus, false),
             BuildOrderAction::Chrono(_) => self
                 .units
                 .my
@@ -178,20 +182,19 @@ impl ReBiCycler {
             .filter(|policy| policy.active && self.evaluate_conditions(&policy.conditions))
             .cloned()
             .collect();
-        println!("Active & conditions met: {conditions_met:?}");
         let doable_policies: Vec<Policy> = conditions_met
             .iter()
             .filter(|policy| self.can_do_build_action(&policy.action))
             .cloned()
             .collect();
         if doable_policies.is_empty() {
-            println!("|!| No doable policies!");
+            println!("[!] No doable policies!");
         }
         if doable_policies
             .iter()
             .any(|policy| policy.action == BuildOrderAction::Construct(UnitTypeId::Gateway))
         {
-            println!("|!| We could do a gatewayyyy");
+            println!("[!] We could do a gatewayyyy");
         }
         let _: () = conditions_met
             .iter()
@@ -201,6 +204,8 @@ impl ReBiCycler {
 
     fn evaluate_conditions(&self, conditions: &[BuildCondition]) -> bool {
         conditions.iter().all(|condition| match condition {
+            BuildCondition::DontHaveAnyDone(unit) => self.counter().count(*unit) == 0,
+            BuildCondition::DontHaveAnyStarted(unit) => self.counter().ordered().count(*unit) == 0,
             BuildCondition::SupplyAtLeast(supply) => self.supply_used >= *supply,
             BuildCondition::SupplyBetween(low, high) => {
                 self.supply_used >= *low && self.supply_used < *high
@@ -232,7 +237,14 @@ impl ReBiCycler {
     fn attempt_build_action(&mut self, action: &BuildOrderAction) {
         //println!("Attempting a policy! {action:?}");
         let result = match action {
-            BuildOrderAction::Construct(unit_type) => self.build(*unit_type),
+            BuildOrderAction::Expand => {
+                self.validate_building_locations();
+                self.build(UnitTypeId::Nexus)
+            }
+            BuildOrderAction::Construct(unit_type) => {
+                self.validate_building_locations();
+                self.build(*unit_type)
+            }
             BuildOrderAction::Train(unit_type, _) => self.train(*unit_type),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(*ability),
             BuildOrderAction::Research(upgrade, researcher, ability) => {

@@ -12,7 +12,7 @@ mod siting;
 pub fn get_options<'a>() -> LaunchOptions<'a> {
     LaunchOptions::<'a> {
         realtime: false,
-        save_replay_as: Some("/home/andrew/Rust/ReBiCycler/replays/test"),
+        save_replay_as: Some("/home/andrew/Documents/rebicycler/replays/test.SC2Replay"),
         ..Default::default()
     }
 }

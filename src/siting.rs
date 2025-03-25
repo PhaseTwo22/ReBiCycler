@@ -1,12 +1,12 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display},
+    iter::once,
 };
 
 use crate::{errors::BuildError, protoss_bot::ReBiCycler, Tag};
 use rust_sc2::{bot::Expansion, prelude::*};
 
-const PYLON_POWER_DISTANCE: f32 = 6.5;
 #[allow(dead_code)]
 const EXPANSION_NAMES: [&str; 48] = [
     "Α", "Β", "Γ", "Δ", "Ε", "Ζ", "Η", "Θ", "Ι", "Κ", "Λ", "Μ", "Ν", "Ξ", "Ο", "Π", "Ρ", "Σ", "Τ",
@@ -22,8 +22,8 @@ enum BuildingStatus {
     Free,
 }
 impl BuildingStatus {
-    pub fn matches(&self, type_id: &UnitTypeId) -> bool {
-        *self == Self::Free || *self == Self::Intended(*type_id)
+    pub fn matches(&self, type_id: UnitTypeId) -> bool {
+        *self == Self::Free || *self == Self::Intended(type_id)
     }
 }
 
@@ -47,6 +47,14 @@ impl BuildingLocation {
             size,
         }
     }
+    pub fn pylon(location: Point2) -> Self {
+        Self::new(location, SlotSize::Small, Some(UnitTypeId::Pylon))
+    }
+
+    pub fn standard(location: Point2) -> Self {
+        Self::new(location, SlotSize::Standard, None)
+    }
+
     pub fn destroy(&mut self) -> Result<(), BuildError> {
         match &self.status {
             BuildingStatus::Built(tag) => {
@@ -65,10 +73,15 @@ impl BuildingLocation {
         self.status = BuildingStatus::Blocked;
     }
 
+    pub fn mark_free(&mut self) {
+        self.status = BuildingStatus::Free;
+    }
+
     pub fn intersects_other(&self, other: &Self) -> bool {
         other
             .get_four_corners()
             .iter()
+            .chain(once(&other.location))
             .any(|p| self.inside_corners(*p))
     }
     fn inside_corners(&self, point: Point2) -> bool {
@@ -97,7 +110,7 @@ impl BuildingLocation {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SlotSize {
     Tumor,
     Small,
@@ -130,7 +143,7 @@ impl SlotSize {
         }
     }
 
-    const fn radius(&self) -> f32 {
+    const fn radius(self) -> f32 {
         match self {
             Self::Tumor => 0.5,
             Self::Small => 1.0,
@@ -139,7 +152,11 @@ impl SlotSize {
         }
     }
 
-    const fn default_checker(&self) -> UnitTypeId {
+    const fn width(self) -> f32 {
+        self.radius() * 2.0
+    }
+
+    const fn default_checker(self) -> UnitTypeId {
         match self {
             Self::Tumor => UnitTypeId::CreepTumor,
             Self::Small => UnitTypeId::SupplyDepot,
@@ -254,6 +271,12 @@ impl SitingDirector {
             .flatten()
             .map(|p| self.add_pylon_site(*p))
             .collect();
+
+        self.building_locations.push(BuildingLocation {
+            location: base_location,
+            status: BuildingStatus::Intended(UnitTypeId::Nexus),
+            size: SlotSize::Townhall,
+        });
     }
 
     pub fn get_available_building_sites<'a>(
@@ -262,7 +285,8 @@ impl SitingDirector {
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
         self.building_locations.iter().filter(|bl| {
-            let fits_intention = (bl.status.matches(type_id)) | (bl.status == BuildingStatus::Free);
+            let fits_intention =
+                (bl.status.matches(*type_id)) | (bl.status == BuildingStatus::Free);
             let fits_size = bl.size == *size;
             fits_size && fits_intention
         })
@@ -270,7 +294,7 @@ impl SitingDirector {
 
     pub fn get_available_building_site_prioritized<F>(
         &self,
-        size: &SlotSize,
+        size: SlotSize,
         type_id: UnitTypeId,
         priority_closure: F,
     ) -> Option<&BuildingLocation>
@@ -280,90 +304,72 @@ impl SitingDirector {
         self.building_locations
             .iter()
             .filter(|bl| {
-                let fits_intention = bl.status.matches(&type_id);
-                let fits_size = bl.size == *size;
+                let fits_intention = bl.status.matches(type_id);
+                let fits_size = bl.size == size;
                 fits_size && fits_intention
             })
             .min_by(priority_closure)
     }
 
-    fn generic_build_location_pattern(pylon_point: Point2) -> Vec<BuildingLocation> {
-        [
-            pylon_point.offset(2.0, 0.0),
-            pylon_point.offset(2.0, 2.0),
-            pylon_point.offset(2.0, 2.0),
-        ]
-        .iter()
-        .map(|p| BuildingLocation::new(*p, SlotSize::Standard, None))
-        .collect()
+    fn rotate_to_four_quadrants(offsets: &[Point2]) -> Vec<Point2> {
+        let rotato = |point: &Point2| {
+            vec![
+                *point,
+                point.rotate90(true),
+                point.rotate90(true).rotate90(true),
+                point.rotate90(false),
+            ]
+        };
+
+        offsets.iter().flat_map(rotato).collect()
     }
 
-    fn flip_x(x: (f32, f32)) -> (f32, f32) {
-        (-x.0, x.1)
-    }
-
-    fn flip_y(x: (f32, f32)) -> (f32, f32) {
-        (x.0, -x.1)
-    }
-
-    fn mirror_to_four_quadrants(offsets: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
-        let top_two = offsets
-            .iter()
-            .map(|p| Self::flip_x(*p))
-            .chain(offsets.clone());
-        let all_four = top_two.clone().map(Self::flip_y).chain(top_two);
-        all_four.collect()
-    }
-
-    pub fn modified_artosis_pattern(center_point: Point2) -> Vec<BuildingLocation> {
+    pub fn pylon_flower(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
-        let pylon_width = pylon_radius * 2.0;
+        let pylon_width = SlotSize::Small.width();
         let standard_radius = SlotSize::Standard.radius();
-        let standard_width = standard_radius * 2.0;
 
-        let top_pylon_point = Point2::new(0.0, pylon_radius);
+        let to_the_right = vec![Point2::new(
+            pylon_radius + standard_radius,
+            standard_radius - pylon_width,
+        )];
 
-        let first_quadrant_building_offsets = [
-            (pylon_radius + standard_radius, -pylon_radius),
-            (
-                pylon_radius + standard_radius + standard_radius,
-                -pylon_radius,
-            ),
-            (standard_radius, pylon_radius + standard_radius),
-            (
-                standard_radius + standard_radius,
+        Self::rotate_to_four_quadrants(&to_the_right)
+            .iter()
+            .map(|point| {
+                BuildingLocation::new(*point, SlotSize::Standard, Some(UnitTypeId::Gateway))
+            })
+            .chain(vec![BuildingLocation::pylon(center_point)])
+            .collect()
+    }
+
+    pub fn pylon_blossom(center_point: Point2) -> Vec<BuildingLocation> {
+        let pylon_radius = SlotSize::Small.radius();
+        let pylon_width = SlotSize::Small.width();
+        let standard_radius = SlotSize::Standard.radius();
+        let standard_width = SlotSize::Standard.width();
+
+        let right_and_up = vec![
+            Point2::new(
                 pylon_radius + standard_radius,
+                standard_radius - pylon_width,
             ),
-        ]
-        .into_iter()
-        .map(|(x, y)| (x + top_pylon_point.x, y + top_pylon_point.y));
+            Point2::new(
+                pylon_radius + standard_radius,
+                standard_radius - pylon_width + standard_width,
+            ),
+        ];
 
-        let all_building_points =
-            Self::mirror_to_four_quadrants(first_quadrant_building_offsets.collect())
-                .into_iter()
-                .map(|(x, y)| center_point.offset(x, y));
-
-        let first_quadrant_pylon_offset = [(2.0 * standard_width + pylon_radius, pylon_width)];
-        let all_pylon_points = Self::mirror_to_four_quadrants(first_quadrant_pylon_offset.to_vec())
-            .into_iter()
-            .map(|(x, y)| center_point.offset(x, y));
-
-        let mut pylons: Vec<BuildingLocation> = all_pylon_points
-            .map(|p| BuildingLocation::new(p, SlotSize::Small, Some(UnitTypeId::Pylon)))
-            .collect();
-        let mut buildings: Vec<BuildingLocation> = all_building_points
-            .map(|p| BuildingLocation::new(p, SlotSize::Standard, None))
-            .collect();
-
-        buildings.append(&mut pylons);
-        buildings
+        Self::rotate_to_four_quadrants(&right_and_up)
+            .iter()
+            .map(|point| BuildingLocation::standard(center_point + *point))
+            .chain(vec![BuildingLocation::pylon(center_point)])
+            .collect()
     }
 
     pub fn add_pylon_site(&mut self, location: Point2) {
-        let pl = BuildingLocation::new(location, SlotSize::Small, Some(UnitTypeId::Pylon));
         self.building_locations
-            .append(&mut Self::modified_artosis_pattern(location));
-        self.building_locations.push(pl);
+            .append(&mut Self::pylon_blossom(location));
     }
 
     pub fn find_and_destroy_building(&mut self, building: &Tag) -> Result<(), BuildError> {
@@ -379,15 +385,12 @@ impl SitingDirector {
 
 impl ReBiCycler {
     pub fn is_location_powered(&self, point: Point2) -> bool {
-        self.units
-            .my
-            .structures
+        self.state
+            .observation
+            .raw
+            .psionic_matrix
             .iter()
-            .of_type(UnitTypeId::Pylon)
-            .ready()
-            .closer(PYLON_POWER_DISTANCE, point)
-            .next()
-            .is_some()
+            .any(|m| point.is_closer(m.radius, m.pos))
     }
 
     /// Finds a site for the building, validates the position, and commands a worker to go build it.
@@ -441,12 +444,16 @@ impl ReBiCycler {
             .building_locations
             .iter_mut()
             .zip(blockers)
-            .map(|(bl, cp)| {
-                if !cp {
+            .map(|(bl, can_place)| {
+                if can_place {
+                    bl.mark_free();
+                } else {
                     bl.mark_blocked();
                 }
             })
             .collect();
+
+        println!("Building locations updated: {:?}", self.siting_director);
     }
 
     fn validate_build_location(
@@ -470,20 +477,48 @@ mod tests {
         let bl2 = BuildingLocation::new(two_over, SlotSize::Small, None);
 
         assert!(!bl1.intersects_other(&bl2));
+
+        let bl3 = BuildingLocation::new(origin, SlotSize::Standard, None);
+        let bl4 = BuildingLocation::new(origin, SlotSize::Standard, None);
+
+        assert!(bl3.intersects_other(&bl4));
     }
 
     #[test]
-    fn artosis_pattern_places_well() {
-        let origin = Point2::new(0.0, 0.0);
+    fn pylon_flower_makes_five() {
+        assert_eq!(
+            SitingDirector::pylon_flower(Point2 { x: 0.0, y: 0.0 }).len(),
+            5
+        );
+    }
 
-        let buildings = SitingDirector::modified_artosis_pattern(origin);
-        for (i, b) in buildings.iter().enumerate() {
-            for (oi, ob) in buildings.iter().enumerate() {
-                assert!(
-                    !b.intersects_other(ob),
-                    "intersecting: [{i}] {b}, [{oi}] {ob}"
-                );
+    fn buildings_intersect(buildings: &[BuildingLocation]) -> bool {
+        for a in buildings {
+            for b in buildings {
+                if a == b {
+                    continue;
+                }
+                if a.intersects_other(b) {
+                    return true;
+                }
             }
         }
+        false
+    }
+
+    #[test]
+    fn pylon_flower_doesnt_self_intersect() {
+        let origin = Point2::new(0.0, 0.0);
+        let buildings = SitingDirector::pylon_flower(origin);
+
+        assert!(!buildings_intersect(&buildings));
+    }
+
+    #[test]
+    fn pylon_blossom_doesnt_self_intersect() {
+        let origin = Point2::new(0.0, 0.0);
+        let buildings = SitingDirector::pylon_blossom(origin);
+
+        assert!(!buildings_intersect(&buildings));
     }
 }
