@@ -6,6 +6,7 @@ mod build_order_manager;
 mod build_orders;
 mod errors;
 mod knowledge;
+mod micro;
 pub mod protoss_bot;
 mod siting;
 
