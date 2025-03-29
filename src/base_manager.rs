@@ -1,6 +1,6 @@
 use crate::errors::{BuildError, UnitEmploymentError};
 use crate::protoss_bot::ReBiCycler;
-use crate::siting::BuildingStatus;
+use crate::siting::{BuildingStatus, PylonPower};
 use crate::{closest_index, Tag};
 use rust_sc2::bot::Expansion;
 use rust_sc2::prelude::*;
@@ -16,7 +16,18 @@ impl GasLocation {
         Self {
             geyser_tag: unit.tag(),
             location: unit.position(),
-            status: BuildingStatus::Free,
+            status: BuildingStatus::Free(
+                Some(UnitTypeId::Assimilator),
+                crate::siting::PylonPower::Depowered,
+            ),
+        }
+    }
+
+    pub fn is_here(&self, building: &Tag) -> bool {
+        use BuildingStatus as S;
+        match self.status {
+            S::Built(tag, _) | S::Constructing(tag, _) => *building == tag,
+            _ => false,
         }
     }
 }
@@ -37,9 +48,9 @@ impl From<BaseManager> for Point2 {
 
 impl BaseManager {
     ///Called when a new base finshes. We don't want to manage a base if we haven't expanded there.
-    pub fn new(bot: &ReBiCycler, expansion: &Expansion, name: String) -> Self {
+    pub fn new(bot: &ReBiCycler, nexus: &Unit, expansion: &Expansion, name: String) -> Self {
         Self {
-            nexus: Self::base_tag(expansion),
+            nexus: BuildingStatus::Built(Tag::from_unit(nexus), PylonPower::Depowered),
             location: expansion.loc,
             name,
             workers: Vec::new(),
@@ -55,27 +66,6 @@ impl BaseManager {
                 .map(|a| bot.units.resources.get(*a))
                 .filter_map(|u| Some(GasLocation::from_unit(u?)))
                 .collect(),
-        }
-    }
-
-    pub fn base_tag(expansion: &Expansion) -> BuildingStatus {
-        if expansion.alliance.is_mine() {
-            expansion.base.map_or_else(
-                || {
-                    println!("Expansion labeled 'mine' but there's no base here!");
-                    BuildingStatus::Free
-                },
-                |tug| {
-                    BuildingStatus::Built(Tag {
-                        tag: tug,
-                        type_id: UnitTypeId::Nexus,
-                    })
-                },
-            )
-        } else if expansion.alliance.is_enemy() {
-            BuildingStatus::Blocked
-        } else {
-            BuildingStatus::Free
         }
     }
 
@@ -98,7 +88,12 @@ impl BaseManager {
 
     pub fn unassign_unit(&mut self, unit_tag: &Tag) -> Result<(), UnitEmploymentError> {
         match unit_tag.type_id {
-            UnitTypeId::Nexus => self.nexus = BuildingStatus::Free,
+            UnitTypeId::Nexus => {
+                self.nexus = BuildingStatus::Free(
+                    Some(UnitTypeId::Nexus),
+                    crate::siting::PylonPower::Depowered,
+                )
+            }
             UnitTypeId::Probe => self.workers.retain(|x| x != unit_tag),
             UnitTypeId::MineralField => self.minerals.retain(|x| x != unit_tag),
             UnitTypeId::MineralField750 => self.minerals.retain(|x| x != unit_tag),
@@ -121,7 +116,7 @@ impl BaseManager {
         match building.type_id() {
             Assimilator | AssimilatorRich => self.add_assimilator(building),
             Nexus => {
-                self.nexus = BuildingStatus::Built(tag);
+                self.nexus = BuildingStatus::Built(tag, crate::siting::PylonPower::Depowered);
                 Ok(())
             }
             _ => Err(BuildError::InvalidUnit(format!(
@@ -137,7 +132,7 @@ impl BaseManager {
             .iter_mut()
             .find(|gl| gl.location == building.position())
             .ok_or_else(|| BuildError::NoBuildingLocationHere(building.position()))?;
-        geyser.status = BuildingStatus::Built(Tag::from_unit(building));
+        geyser.status = BuildingStatus::Built(Tag::from_unit(building), PylonPower::Depowered);
         Ok(())
     }
 
@@ -145,20 +140,20 @@ impl BaseManager {
         let geyser = self
             .geysers
             .iter_mut()
-            .find(|gl| gl.status == BuildingStatus::Built(building))
+            .find(|gl| gl.is_here(&building))
             .ok_or_else(|| {
                 UnitEmploymentError(format!(
                     "We didn't have a built geyser with this tag: {building:?}",
                 ))
             })?;
-        geyser.status = BuildingStatus::Intended(UnitTypeId::Assimilator);
+        geyser.status = BuildingStatus::Free(Some(UnitTypeId::Assimilator), PylonPower::Depowered);
         Ok(())
     }
 
     pub fn get_free_geyser(&self) -> Option<&GasLocation> {
         self.geysers
             .iter()
-            .find(|gl| gl.status.matches(UnitTypeId::Assimilator))
+            .find(|gl| gl.status.can_build(&UnitTypeId::Assimilator))
     }
 }
 
@@ -171,18 +166,9 @@ impl ReBiCycler {
         &mut self,
         worker: &Unit,
     ) -> Result<(), UnitEmploymentError> {
-        let nearest_nexus = self
-            .units
-            .my
-            .townhalls
-            .iter()
-            .closest(worker)
-            .ok_or_else(|| UnitEmploymentError("No nexi exist!".to_string()))?;
-
-        let nn_tag = Tag::from_unit(nearest_nexus);
         self.base_managers
             .iter_mut()
-            .find(|bm| bm.nexus == BuildingStatus::Built(nn_tag))
+            .find(|bm| bm.nexus.is_mine())
             .map_or_else(
                 || Err(UnitEmploymentError("No base managers exist!".to_string())),
                 |bm| bm.assign_unit(worker),
@@ -205,17 +191,19 @@ impl ReBiCycler {
     /// Add the resources and existing buildings, if any.
     /// # Errors
     /// `BuildError::NoBuildingLocationHere` if the base isn't on an expansion location
-    pub fn new_base_finished(&mut self, position: Point2) -> Result<(), BuildError> {
+    pub fn new_base_finished(&mut self, nexus: &Unit) -> Result<(), BuildError> {
+        let nexus_position = nexus.position();
         let mut bm = BaseManager::new(
             self,
+            nexus,
             self.expansions
                 .iter()
-                .find(|e| e.loc == position)
-                .ok_or(BuildError::NoBuildingLocationHere(position))?,
+                .find(|e| e.loc == nexus_position)
+                .ok_or(BuildError::NoBuildingLocationHere(nexus_position))?,
             format!("Expansion {}", self.counter().count(UnitTypeId::Nexus)),
         );
-        for building in self.units.my.structures.iter().closer(15.0, position) {
-            bm.add_building(building)?;
+        for building in self.units.my.structures.iter().closer(15.0, nexus_position) {
+            bm.add_building(building);
         }
 
         self.base_managers.push(bm);

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rust_sc2::prelude::*;
 
-use crate::{base_manager::GasLocation, siting::BuildingLocation, Tag};
+use crate::Tag;
 
 pub struct Platoon {
     pub state: PlatoonState,

@@ -10,6 +10,9 @@ mod micro;
 pub mod protoss_bot;
 mod siting;
 
+pub const PYLON_POWER_RADIUS: f32 = 6.5;
+pub const PRISM_POWER_RADIUS: f32 = 3.75;
+
 #[must_use]
 pub fn get_options<'a>() -> LaunchOptions<'a> {
     LaunchOptions::<'a> {

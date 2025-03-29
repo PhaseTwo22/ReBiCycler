@@ -27,4 +27,7 @@ pub enum BuildError {
     AlreadyResearching,
     NoBuildItemsLeft,
     WarpGateNotResearched,
+    NoPower(Point2),
 }
+
+pub struct TransitionError;

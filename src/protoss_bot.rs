@@ -30,7 +30,7 @@ impl Player for ReBiCycler {
         self.siting_director
             .initialize_global_placement(self.expansions.clone().as_slice(), map_center);
         println!("Building templates placed: {:?}", self.siting_director);
-        self.validate_building_locations();
+        self.update_building_obstructions();
 
         println!("Global siting complete: {:?}", self.siting_director);
 
@@ -78,7 +78,7 @@ impl Player for ReBiCycler {
                 );
 
                 if building.type_id() == UnitTypeId::Nexus {
-                    if let Err(e) = self.new_base_finished(building.position()) {
+                    if let Err(e) = self.new_base_finished(&building.clone()) {
                         println!("BaseManager failed to initialize: {e:?}");
                     }
                 }

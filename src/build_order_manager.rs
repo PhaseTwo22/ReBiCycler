@@ -127,12 +127,12 @@ impl ReBiCycler {
         //println!("Attempting a policy! {action:?}");
         let result = match action {
             BuildOrderAction::Expand => {
-                self.validate_building_locations();
+                self.update_building_obstructions();
                 self.build(UnitTypeId::Nexus)
             }
             BuildOrderAction::Construct(UnitTypeId::Assimilator) => self.build_gas(),
             BuildOrderAction::Construct(unit_type) => {
-                self.validate_building_locations();
+                self.update_building_obstructions();
                 self.build(unit_type)
             }
             BuildOrderAction::Train(unit_type, _) => self.train(unit_type),

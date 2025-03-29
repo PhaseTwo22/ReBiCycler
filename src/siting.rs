@@ -1,11 +1,16 @@
 use std::{
     cmp::Ordering,
+    collections::HashMap,
     fmt::{self, Debug, Display},
     iter::once,
 };
 
-use crate::{errors::BuildError, protoss_bot::ReBiCycler, Tag};
-use rust_sc2::{bot::Expansion, prelude::*};
+use crate::{
+    errors::{BuildError, TransitionError},
+    protoss_bot::ReBiCycler,
+    Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
+};
+use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
 
 #[allow(dead_code)]
 const EXPANSION_NAMES: [&str; 48] = [
@@ -16,15 +21,78 @@ const EXPANSION_NAMES: [&str; 48] = [
 ];
 #[derive(PartialEq, Debug, Clone, Eq)]
 pub enum BuildingStatus {
-    Blocked,
-    Intended(UnitTypeId),
-    Built(Tag),
-    Free,
+    Blocked(Option<UnitTypeId>, PylonPower),
+    Free(Option<UnitTypeId>, PylonPower),
+
+    Built(Tag, PylonPower),
+    Constructing(Tag, PylonPower),
 }
 impl BuildingStatus {
-    pub fn matches(&self, type_id: UnitTypeId) -> bool {
-        *self == Self::Free || *self == Self::Intended(type_id)
+    pub fn can_build(&self, type_id: &UnitTypeId) -> bool {
+        match self {
+            Self::Free(
+                Some(
+                    UnitTypeId::Pylon
+                    | UnitTypeId::Nexus
+                    | UnitTypeId::Assimilator
+                    | UnitTypeId::AssimilatorRich,
+                ),
+                _,
+            ) => true,
+            Self::Free(None, PylonPower::Powered) => true,
+            Self::Free(Some(intent), PylonPower::Powered) => intent == type_id,
+            _ => false,
+        }
     }
+
+    pub fn is_mine(&self) -> bool {
+        match self {
+            Self::Built(_, _) | Self::Constructing(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn depower(self) -> Result<Self, TransitionError> {
+        use PylonPower as P;
+        match self {
+            Self::Blocked(whatever, P::Powered) => Ok(Self::Blocked(whatever, P::Depowered)),
+            Self::Free(whatever, P::Powered) => Ok(Self::Free(whatever, P::Depowered)),
+            Self::Built(whatever, P::Powered) => Ok(Self::Built(whatever, P::Depowered)),
+            Self::Constructing(whatever, P::Powered) => {
+                Ok(Self::Constructing(whatever, P::Depowered))
+            }
+            _ => Err(TransitionError),
+        }
+    }
+
+    pub fn repower(self) -> Result<Self, TransitionError> {
+        use PylonPower as P;
+        match self {
+            Self::Blocked(whatever, P::Depowered) => Ok(Self::Blocked(whatever, P::Powered)),
+            Self::Free(whatever, P::Depowered) => Ok(Self::Free(whatever, P::Powered)),
+            Self::Built(whatever, P::Depowered) => Ok(Self::Built(whatever, P::Powered)),
+            Self::Constructing(whatever, P::Depowered) => {
+                Ok(Self::Constructing(whatever, P::Powered))
+            }
+            other => Ok(other), // powered buildings can be powered multiple times
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum PylonPower {
+    Powered,
+    Depowered,
+}
+
+pub enum BuildingTransition {
+    Destroy,
+    Obstruct,
+    UnObstruct,
+    DePower,
+    RePower,
+    Construct(Tag),
+    Finish,
 }
 
 const PYLON_DISTANCE_FROM_NEXUS: f32 = 9.0;
@@ -43,7 +111,7 @@ impl BuildingLocation {
     pub fn new(location: Point2, size: SlotSize, intention: Option<UnitTypeId>) -> Self {
         Self {
             location,
-            status: intention.map_or_else(|| BuildingStatus::Free, BuildingStatus::Intended),
+            status: BuildingStatus::Free(intention, PylonPower::Depowered),
             size,
         }
     }
@@ -55,26 +123,54 @@ impl BuildingLocation {
         Self::new(location, SlotSize::Standard, None)
     }
 
-    pub fn destroy(&mut self) -> Result<(), BuildError> {
-        match &self.status {
-            BuildingStatus::Built(tag) => {
-                self.status = BuildingStatus::Intended(tag.type_id);
-                Ok(())
-            }
-            _ => Err(BuildError::InvalidUnit(
-                "Trying to destroy in a available building slot!".to_string(),
-            )),
-        }
-    }
-    pub fn build(&mut self, building: Tag) {
-        self.status = BuildingStatus::Built(building);
-    }
-    pub fn mark_blocked(&mut self) {
-        self.status = BuildingStatus::Blocked;
+    pub fn is_free(&self) -> bool {
+        matches!(self.status, BuildingStatus::Free(_, _))
     }
 
-    pub fn mark_free(&mut self) {
-        self.status = BuildingStatus::Free;
+    pub fn is_here(&self, building: &Tag) -> bool {
+        use BuildingStatus as S;
+        match self.status {
+            S::Built(tag, _) | S::Constructing(tag, _) => *building == tag,
+            _ => false,
+        }
+    }
+
+    pub fn transition(&mut self, transition: BuildingTransition) -> Result<(), TransitionError> {
+        use BuildingStatus as S;
+        use BuildingTransition as T;
+        let new_status = match (transition, self.status.clone()) {
+            (T::DePower, state) => state.depower(),
+            (T::RePower, state) => state.repower(),
+            (T::Construct(tag), S::Free(_, power)) => {
+                if self.status.can_build(&tag.type_id) {
+                    Ok(S::Constructing(tag, power))
+                } else {
+                    Err(TransitionError)
+                }
+            }
+            (T::Obstruct, S::Free(intent, power)) => Ok(S::Blocked(intent, power)),
+
+            (T::Finish, S::Constructing(tag, power)) => Ok(S::Built(tag, power)),
+
+            (T::Destroy, S::Built(tag, power) | S::Constructing(tag, power)) => {
+                Ok(S::Free(Some(tag.type_id), power))
+            }
+            (T::UnObstruct, S::Blocked(intent, power)) => Ok(S::Free(intent, power)),
+
+            (T::UnObstruct, _) => Err(TransitionError),
+
+            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError),
+
+            (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => Err(TransitionError),
+
+            (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => Err(TransitionError),
+
+            (T::Obstruct | T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+                Err(TransitionError)
+            }
+        }?;
+        self.status = new_status;
+        Ok(())
     }
 
     pub fn intersects_other(&self, other: &Self) -> bool {
@@ -168,24 +264,24 @@ impl SlotSize {
 
 #[derive(Default)]
 pub struct SitingDirector {
-    building_locations: Vec<BuildingLocation>,
+    building_locations: HashMap<Point2, BuildingLocation>,
 }
 impl Debug for SitingDirector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let small_sites = self
             .building_locations
-            .iter()
-            .filter(|bl| bl.size == SlotSize::Small && bl.status != BuildingStatus::Blocked)
+            .values()
+            .filter(|bl| bl.size == SlotSize::Small && bl.is_free())
             .count();
         let standard_sites = self
             .building_locations
-            .iter()
-            .filter(|bl| bl.size == SlotSize::Standard && bl.status != BuildingStatus::Blocked)
+            .values()
+            .filter(|bl| bl.size == SlotSize::Standard && bl.is_free())
             .count();
         let large_sites = self
             .building_locations
-            .iter()
-            .filter(|bl| bl.size == SlotSize::Townhall && bl.status != BuildingStatus::Blocked)
+            .values()
+            .filter(|bl| bl.size == SlotSize::Townhall && bl.is_free())
             .count();
         write!(
             f,
@@ -212,21 +308,20 @@ impl SitingDirector {
             )))
         }?;
 
-        self.building_locations
-            .iter_mut()
-            .find(|bl| bl.location == location)
-            .map_or(Err(BuildError::NoBuildingLocationHere(location)), |spot| {
-                spot.build(tag);
+        self.building_locations.get_mut(&location).map_or(
+            Err(BuildError::NoBuildingLocationHere(location)),
+            |spot| {
+                spot.transition(BuildingTransition::Construct(tag));
                 Ok(())
-            })
+            },
+        )
     }
 
     pub fn mark_position_blocked(&mut self, location: Point2) -> Result<(), BuildError> {
         self.building_locations
-            .iter_mut()
-            .find(|bl| bl.location == location)
+            .get_mut(&location)
             .ok_or(BuildError::NoBuildingLocationHere(location))?
-            .mark_blocked();
+            .transition(BuildingTransition::Obstruct);
         Ok(())
     }
 
@@ -255,11 +350,14 @@ impl SitingDirector {
             .map(|p| self.add_pylon_site(p.round()))
             .collect();
 
-        self.building_locations.push(BuildingLocation {
-            location: base_location,
-            status: BuildingStatus::Intended(UnitTypeId::Nexus),
-            size: SlotSize::Townhall,
-        });
+        self.building_locations.insert(
+            base_location,
+            BuildingLocation {
+                location: base_location,
+                status: BuildingStatus::Free(Some(UnitTypeId::Nexus), PylonPower::Depowered),
+                size: SlotSize::Townhall,
+            },
+        );
     }
 
     pub fn get_available_building_sites<'a>(
@@ -267,9 +365,8 @@ impl SitingDirector {
         size: &'a SlotSize,
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
-        self.building_locations.iter().filter(|bl| {
-            let fits_intention =
-                (bl.status.matches(*type_id)) | (bl.status == BuildingStatus::Free);
+        self.building_locations.values().filter(|bl| {
+            let fits_intention = bl.status.can_build(type_id);
             let fits_size = bl.size == *size;
             fits_size && fits_intention
         })
@@ -285,9 +382,9 @@ impl SitingDirector {
         F: Fn(&&BuildingLocation, &&BuildingLocation) -> Ordering,
     {
         self.building_locations
-            .iter()
+            .values()
             .filter(|bl| {
-                let fits_intention = bl.status.matches(type_id);
+                let fits_intention = bl.status.can_build(&type_id);
                 let fits_size = bl.size == size;
                 fits_size && fits_intention
             })
@@ -351,18 +448,24 @@ impl SitingDirector {
     }
 
     pub fn add_pylon_site(&mut self, location: Point2) {
-        self.building_locations
-            .append(&mut Self::pylon_blossom(location));
+        for bl in Self::pylon_blossom(location) {
+            self.building_locations.insert(bl.location, bl);
+        }
     }
 
     pub fn find_and_destroy_building(&mut self, building: &Tag) -> Result<(), BuildError> {
         self.building_locations
-            .iter_mut()
-            .find(|l| l.status == BuildingStatus::Built(*building))
+            .values_mut()
+            .find(|l| l.is_here(building))
             .ok_or_else(|| {
                 BuildError::InvalidUnit(format!("couldn't find building to destroy: {building:?}"))
             })?
-            .destroy()
+            .transition(BuildingTransition::Destroy)
+            .map_err(|_| {
+                BuildError::InvalidUnit(format!(
+                    "Target Building {building:?} is here but can't be destroyed?!"
+                ))
+            })
     }
 }
 
@@ -388,7 +491,7 @@ impl ReBiCycler {
         let position = self
             .siting_director
             .get_available_building_sites(&size, &structure_type)
-            .find(|bl| self.validate_build_location(bl, structure_type));
+            .find(|bl| self.location_is_blocked(bl, structure_type));
 
         if let Some(position) = position {
             let builder = self
@@ -418,15 +521,57 @@ impl ReBiCycler {
         self.take_gas(base.location)
     }
 
-    pub fn validate_building_locations(&mut self) {
-        let blockers: Vec<bool> = self
+    pub fn update_building_power(
+        &mut self,
+        unit_change: UnitTypeId,
+        power_point: Point2,
+        turned_on: bool,
+    ) -> Result<(), BuildError> {
+        let matrices = self.state.observation.raw.psionic_matrix.clone();
+        if turned_on {
+            let matrix = matrices
+                .iter()
+                .find(|pm| pm.pos == power_point)
+                .ok_or(BuildError::NoPower(power_point))?;
+            for bl in self
+                .siting_director
+                .building_locations
+                .values_mut()
+                .filter(|bl| bl.location.distance(matrix.pos) <= matrix.radius)
+            {
+                bl.transition(BuildingTransition::RePower);
+            }
+        } else if unit_change == UnitTypeId::Pylon {
+            for bl in self
+                .siting_director
+                .building_locations
+                .values_mut()
+                .filter(|bl| bl.location.distance(power_point) <= PYLON_POWER_RADIUS)
+            {
+                bl.transition(BuildingTransition::DePower);
+            }
+        } else {
+            for bl in self
+                .siting_director
+                .building_locations
+                .values_mut()
+                .filter(|bl| bl.location.distance(power_point) <= PRISM_POWER_RADIUS)
+            {
+                bl.transition(BuildingTransition::DePower);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn update_building_obstructions(&mut self) {
+        let blocked: Vec<bool> = self
             .siting_director
             .building_locations
-            .iter()
+            .values()
             .map(|bl| {
-                self.validate_build_location(
+                self.location_is_blocked(
                     bl,
-                    if let BuildingStatus::Intended(type_id) = bl.status {
+                    if let BuildingStatus::Free(Some(type_id), _) = bl.status {
                         type_id
                     } else {
                         bl.size.default_checker()
@@ -438,13 +583,13 @@ impl ReBiCycler {
         let _: () = self
             .siting_director
             .building_locations
-            .iter_mut()
-            .zip(blockers)
+            .values_mut()
+            .zip(blocked)
             .map(|(bl, can_place)| {
                 if can_place {
-                    bl.mark_free();
+                    bl.transition(BuildingTransition::UnObstruct);
                 } else {
-                    bl.mark_blocked();
+                    bl.transition(BuildingTransition::Obstruct);
                 }
             })
             .collect();
@@ -452,12 +597,30 @@ impl ReBiCycler {
         println!("Building locations updated: {:?}", self.siting_director);
     }
 
-    fn validate_build_location(
+    fn location_is_blocked(
         &self,
         build_location: &BuildingLocation,
         structure_type: UnitTypeId,
     ) -> bool {
-        self.can_place(structure_type, build_location.location)
+        let result = self
+            .query_placement(
+                vec![(
+                    self.game_data.units[&structure_type].ability.unwrap(),
+                    build_location.location,
+                    None,
+                )],
+                false,
+            )
+            .unwrap()[0];
+        if result != ActionResult::Success {
+            println!(
+                "Location {:?} is blocked: {:?}",
+                build_location.location, result
+            );
+            false
+        } else {
+            true
+        }
     }
 }
 
