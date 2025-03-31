@@ -4,9 +4,12 @@ use rust_sc2::prelude::*;
 
 use crate::Tag;
 
-pub struct Platoon {
-    pub state: PlatoonState,
-    pub squads: Vec<Squad>,
+pub trait Platoon {
+    fn new_squad(&mut self, squad_type: SquadType);
+    fn dismiss_squad(&mut self) -> Vec<MicroTag>;
+    fn assign_unit(&mut self, unit: MicroTag);
+    fn remove_unit(&mut self, unit: Tag) -> Option<MicroTag>;
+    fn update_state(&mut self, transition: PlatoonTransition);
 }
 
 pub struct Squad {
@@ -43,8 +46,8 @@ impl Squad {
 }
 
 pub enum SquadType {
-    MineralMiners,
-    GasMiners,
+    MineralMiners{mine_point: Point2, return_point: Point2},
+    GasMiners{mine_point: Point2, return_point: Point2},
 }
 
 pub enum PlatoonState {
@@ -114,6 +117,18 @@ impl MicroBaseManager {
                 .collect(),
         }
     }
+
+    pub fn make_gas_squad(nexus: Unit, assimilator: Unit) -> SquadType {
+    let mine_point = assimilator.position().towards(nexus.position(), 2.0);
+    let return_point = nexus.position().towards(assimilator.position(), 3.0);
+    SquadType::GasMiners{mine_point, return_point}
+}
+
+    pub fn make_mineral_squad(nexus:Unit, patch: Unit) -> SquadType {
+    let mine_point = patch.position().towards(nexus.position(), 1.0);
+    let return_point = nexus.position().towards(patch.position(), 3.0);
+    SquadType::MineralMiners{mine_point, return_point}
+}
 
     pub fn add_assimilator(&mut self, tag: u64) {
         self.gas_squads
