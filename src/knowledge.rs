@@ -58,10 +58,10 @@ impl Knowledge {
         let new_units: HashSet<UnitTypeId> = units
             .iter()
             .filter_map(|u| {
-                if !self.first_seen_unit_times.contains_key(&u.type_id()) {
-                    Some(u.type_id())
-                } else {
+                if self.first_seen_unit_times.contains_key(&u.type_id()) {
                     None
+                } else {
+                    Some(u.type_id())
                 }
             })
             .collect();

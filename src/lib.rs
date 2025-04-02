@@ -95,3 +95,26 @@ pub const fn is_protoss_building(unit: UnitTypeId) -> bool {
 pub const fn is_assimilator(unit: UnitTypeId) -> bool {
     matches!(unit, UnitTypeId::Assimilator | UnitTypeId::AssimilatorRich)
 }
+
+#[must_use]
+pub const fn is_minerals(unit: UnitTypeId) -> bool {
+    use UnitTypeId as U;
+    matches!(
+        unit,
+        U::MineralField
+            | U::MineralField750
+            | U::MineralField450
+            | U::LabMineralField
+            | U::LabMineralField750
+            | U::RichMineralField
+            | U::RichMineralField750
+            | U::MineralFieldOpaque
+            | U::MineralFieldOpaque900
+            | U::PurifierMineralField
+            | U::PurifierMineralField750
+            | U::PurifierRichMineralField
+            | U::PurifierRichMineralField750
+            | U::BattleStationMineralField
+            | U::BattleStationMineralField750
+    )
+}

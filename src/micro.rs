@@ -8,7 +8,8 @@ const MINERAL_MINE_DISTANCE: f32 = 1.0;
 const GAS_MINE_DISTANCE: f32 = 2.5;
 const RETURN_CARGO_DISTANCE: f32 = 3.0;
 
-enum ResourceType {
+#[derive(Debug)]
+pub enum ResourceType {
     Gas,
     Minerals,
 }
@@ -20,6 +21,7 @@ pub struct MinerManager {
     priority: ResourceType,
 }
 
+#[derive(Clone, Copy)]
 enum MinerAsset {
     Resource,
     Townhall,
@@ -47,6 +49,7 @@ enum MinerMicroState {
     ReturnCargo,
     ReturnMove(Point2),
 }
+#[derive(Debug)]
 pub enum MiningError {
     NotHarvestable(u64),
     NoTownhalls,
@@ -54,12 +57,19 @@ pub enum MiningError {
 }
 
 impl MinerManager {
-    pub fn assign_miner(&mut self, miner: Unit) -> Result<(), MiningError> {
-        self.employ_miner(miner.tag())
+    pub fn micro(&mut self, units: &Units) {
+        let errors: Vec<MicroError> = self.update_miners(units);
+        for e in errors {
+            if let Err(second_error) = match e {
+                MicroError::UnitNotRegistered(tag) => self.employ_miner(tag.tag),
+            } {
+                println!("Unable to resolve error within MinerManager: {second_error:?}");
+            };
+        }
+        self.micro_miners(units);
     }
-    fn register_unit(&mut self, unit: Unit, assignment: MinerAssignment) {
-        self.miners
-            .insert(unit.tag(), (assignment, MinerMicroState::Idle));
+    pub fn assign_miner(&mut self, miner: &Unit) -> Result<(), MiningError> {
+        self.employ_miner(miner.tag())
     }
 
     pub fn available_jobs(&self) -> usize {
@@ -206,7 +216,11 @@ impl MinerManager {
         self.remove_asset(unit, MinerAsset::Townhall)
     }
 
-    fn update_miners<'a>(&'a mut self, my_units: &'a Units) -> Vec<(&'a Unit, MicroError)> {
+    pub fn remove_resource(&mut self, unit: u64) -> Vec<u64> {
+        self.remove_asset(unit, MinerAsset::Resource)
+    }
+
+    fn update_miners<'a>(&'a mut self, my_units: &'a Units) -> Vec<MicroError> {
         my_units
             .iter()
             .filter_map(|unit| {
@@ -216,21 +230,21 @@ impl MinerManager {
                     self.miners.insert(tag, (assignment, new_state));
                     None
                 } else {
-                    Some((unit, MicroError::UnitNotRegistered(Tag::from_unit(unit))))
+                    Some(MicroError::UnitNotRegistered(Tag::from_unit(unit)))
                 }
             })
             .collect()
     }
 
-    fn micro_miners<'a>(&'a self, my_units: &'a Units) -> Vec<(&'a Unit, MicroError)> {
+    fn micro_miners<'a>(&'a self, my_units: &'a Units) -> Vec<MicroError> {
         my_units
             .iter()
             .map(|unit| {
-                if let Some(state) = self.miners.get(&unit.tag()) {
-                    // do the micro
+                if let Some((assignment, state)) = self.miners.get(&unit.tag()) {
+                    worker_micro(unit, state, assignment);
                     Ok(())
                 } else {
-                    Err((unit, MicroError::UnitNotRegistered(Tag::from_unit(unit))))
+                    Err(MicroError::UnitNotRegistered(Tag::from_unit(unit)))
                 }
             })
             .filter_map(Result::err)
@@ -238,12 +252,14 @@ impl MinerManager {
     }
 }
 
-fn worker_micro(unit: &Unit, state: MinerMicroState, assignment: &MinerAssignment) {
+fn worker_micro(unit: &Unit, state: &MinerMicroState, assignment: &MinerAssignment) {
     match state {
         MinerMicroState::Gather => unit.gather(assignment.resource.tag(), false),
-        MinerMicroState::GatherMove(point) => unit.move_to(Target::Pos(point), false),
+
         MinerMicroState::ReturnCargo => unit.return_resource(false),
-        MinerMicroState::ReturnMove(point) => unit.move_to(Target::Pos(point), false),
+        MinerMicroState::GatherMove(point) | MinerMicroState::ReturnMove(point) => {
+            unit.move_to(Target::Pos(*point), false);
+        }
         MinerMicroState::Idle => unit.stop(false),
     }
 }
@@ -262,12 +278,16 @@ fn worker_update(
             }
         }
         (true, MinerMicroState::ReturnCargo) => MinerMicroState::ReturnCargo,
-        (false, MinerMicroState::ReturnCargo) => MinerMicroState::GatherMove(
-            assignment
-                .resource
-                .position()
-                .towards(unit.position(), MINERAL_MINE_DISTANCE),
-        ),
+        (false, MinerMicroState::ReturnCargo) => {
+            MinerMicroState::GatherMove(assignment.resource.position().towards(
+                unit.position(),
+                if assignment.resource.is_mineral() {
+                    MINERAL_MINE_DISTANCE
+                } else {
+                    GAS_MINE_DISTANCE
+                },
+            ))
+        }
         (false, MinerMicroState::GatherMove(point)) => {
             if unit.position().distance(point) < 0.1 {
                 MinerMicroState::Gather

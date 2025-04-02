@@ -31,13 +31,13 @@ pub enum BuildError {
     WarpGateNotResearched,
     NoPower(Point2),
 }
-
+#[derive(Debug)]
 pub enum TransitionError {
-    InvalidTransition,
+    InvalidTransition(String),
     InvalidUnit,
 }
+
+#[derive(Debug)]
 pub enum MicroError {
     UnitNotRegistered(Tag),
-    SquadDisbanded,
-    PlatoonDisbanded,
 }

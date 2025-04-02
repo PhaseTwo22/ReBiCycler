@@ -156,6 +156,18 @@ impl Player for ReBiCycler {
                                 println!("Error depowering pylon: {e:?}");
                             }
                         }
+                    } else if crate::is_minerals(unit_details.type_id) {
+                        let unemployed: Vec<Unit> = self
+                            .mining_manager
+                            .remove_resource(unit_tag.tag)
+                            .into_iter()
+                            .filter_map(|u| self.units.my.workers.get(u))
+                            .cloned()
+                            .collect();
+
+                        for unit in unemployed {
+                            self.back_to_work(&unit.clone());
+                        }
                     }
                 }
             }

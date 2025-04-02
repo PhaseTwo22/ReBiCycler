@@ -224,10 +224,10 @@ impl ReBiCycler {
         unit_width: f32,
     ) -> Result<(), BuildError> {
         let possible_rings = (matrix.radius / unit_width).floor();
-        for ring_number in 1..possible_rings as i32 {
+        for ring_number in 1..possible_rings as usize {
             let circumference = TAU * matrix.radius * (ring_number as f32 / possible_rings);
             let possible_angles = (circumference / unit_width).floor();
-            for angle_step in 0..possible_angles as i32 {
+            for angle_step in 0..possible_angles as usize {
                 let angle = TAU * angle_step as f32 / possible_angles;
                 let offset = Point2::new(ring_number as f32 * unit_width, 0.0).rotate(angle);
 
