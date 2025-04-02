@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 rust-sc2 = { git = "https://github.com/UltraMachine/rust-sc2" }
+slotmap = "1.0.7"

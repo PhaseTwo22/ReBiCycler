@@ -5,6 +5,7 @@ use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
+use crate::micro::MinerManager;
 use crate::siting::SitingDirector;
 use crate::Tag;
 
@@ -16,6 +17,7 @@ pub struct ReBiCycler {
     pub base_managers: Vec<BaseManager>,
     pub siting_director: SitingDirector,
     pub knowledge: Knowledge,
+    pub mining_manager: MinerManager,
     game_started: bool,
 }
 impl Player for ReBiCycler {
@@ -34,6 +36,18 @@ impl Player for ReBiCycler {
 
         println!("Global siting complete: {:?}", self.siting_director);
 
+        let nearby_minerals: Vec<Unit> = self
+            .units
+            .resources
+            .iter()
+            .closer(10.0, self.start_center)
+            .filter(|u| u.is_mineral())
+            .cloned()
+            .collect();
+        for mineral in nearby_minerals {
+            self.mining_manager.add_resource(mineral);
+        }
+
         for worker in &self.units.my.workers.clone() {
             if self.reassign_worker_to_nearest_base(worker).is_err() {
                 println!("No bases at game start?!");
@@ -47,6 +61,7 @@ impl Player for ReBiCycler {
 
     fn on_step(&mut self, frame_no: usize) -> SC2Result<()> {
         self.observe(frame_no);
+        self.broadcast_alerts();
 
         if frame_no % 50 == 0 {
             self.step_build();
@@ -81,6 +96,8 @@ impl Player for ReBiCycler {
                     if let Err(e) = self.new_base_finished(&building.clone()) {
                         println!("BaseManager failed to initialize: {e:?}");
                     }
+                } else if building.type_id() == UnitTypeId::Pylon {
+                    self.update_building_power(UnitTypeId::Pylon, building.position(), true);
                 }
             }
             Event::UnitCreated(unit_tag) => {
@@ -120,6 +137,16 @@ impl Player for ReBiCycler {
                         if let Err(e) = self.siting_director.find_and_destroy_building(&unit_tag) {
                             println!("Destroyed structure not logged in siting director! {e:?}");
                         };
+
+                        if unit_details.type_id == UnitTypeId::Pylon
+                            || unit_details.type_id == UnitTypeId::WarpPrismPhasing
+                        {
+                            self.update_building_power(
+                                unit_details.type_id,
+                                unit_details.last_position,
+                                false,
+                            );
+                        }
                     }
                 }
             }
@@ -172,6 +199,25 @@ impl ReBiCycler {
             build_order: BuildOrder::empty(),
             game_started: false,
             ..Default::default()
+        }
+    }
+
+    fn broadcast_alerts(&self) {
+        let alerts = &self.state.observation.alerts;
+        if !alerts.is_empty() {
+            println!("ALERTS: {alerts:?}");
+        }
+
+        let abilities: Vec<AbilityId> = self
+            .state
+            .observation
+            .abilities
+            .iter()
+            .map(|a| a.id)
+            .collect();
+        if !abilities.is_empty() {
+            println!("Available Abilities: {abilities:?}");
+            panic!("The state.observation.abilities field was filled in for once!")
         }
     }
 

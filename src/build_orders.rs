@@ -87,7 +87,7 @@ pub fn four_base_charge() -> BuildOrder {
                 Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
             ),
             (
-                "Build first pylon".to_string(),
+                "Build three pylons".to_string(),
                 &[
                     AtLeastCount(UnitTypeId::Probe, 14),
                     DontHaveAnyStarted(UnitTypeId::Pylon),
@@ -95,7 +95,7 @@ pub fn four_base_charge() -> BuildOrder {
                 Construct(UnitTypeId::Pylon),
             ),
         ],
-        &[AtLeastCount(UnitTypeId::Pylon, 1)],
+        &[AtLeastCount(UnitTypeId::Pylon, 3)],
     );
 
     let mut expand_and_probe = vec![
@@ -155,16 +155,16 @@ pub fn four_base_charge() -> BuildOrder {
             end_conditions: vec![AtLeastCount(UnitTypeId::CyberneticsCore, 1)],
             action: Construct(UnitTypeId::CyberneticsCore),
         },
-        Component {
-            name: "Reseach warpgate".to_string(),
-            start_conditions: vec![StructureComplete(UnitTypeId::CyberneticsCore)],
-            end_conditions: vec![TechComplete(UpgradeId::WarpGateResearch)],
-            action: Research(
-                UpgradeId::WarpGateResearch,
-                UnitTypeId::CyberneticsCore,
-                AbilityId::ResearchWarpGate,
-            ),
-        },
+        // Component {
+        //     name: "Reseach warpgate".to_string(),
+        //     start_conditions: vec![StructureComplete(UnitTypeId::CyberneticsCore)],
+        //     end_conditions: vec![TechComplete(UpgradeId::WarpGateResearch)],
+        //     action: Research(
+        //         UpgradeId::WarpGateResearch,
+        //         UnitTypeId::CyberneticsCore,
+        //         AbilityId::ResearchWarpGate,
+        //     ),
+        // },
         Component {
             name: "Build twilight council".to_string(),
             start_conditions: vec![
@@ -222,7 +222,7 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![
                 TechComplete(UpgradeId::WarpGateResearch),
-                LessThanCount(UnitTypeId::Zealot, 3),
+                AtLeastCount(UnitTypeId::Zealot, 2),
             ],
             action: Train(UnitTypeId::Zealot, AbilityId::GatewayTrainZealot),
         },

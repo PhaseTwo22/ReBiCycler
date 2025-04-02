@@ -92,7 +92,7 @@ impl BaseManager {
                 self.nexus = BuildingStatus::Free(
                     Some(UnitTypeId::Nexus),
                     crate::siting::PylonPower::Depowered,
-                )
+                );
             }
             UnitTypeId::Probe => self.workers.retain(|x| x != unit_tag),
             UnitTypeId::MineralField => self.minerals.retain(|x| x != unit_tag),

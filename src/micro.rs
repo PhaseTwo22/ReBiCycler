@@ -2,191 +2,286 @@ use std::collections::HashMap;
 
 use rust_sc2::prelude::*;
 
-use crate::Tag;
+use crate::{errors::MicroError, Tag};
 
-pub trait Platoon {
-    fn new_squad(&mut self, squad_type: SquadType);
-    fn dismiss_squad(&mut self) -> Vec<MicroTag>;
-    fn assign_unit(&mut self, unit: MicroTag);
-    fn remove_unit(&mut self, unit: Tag) -> Option<MicroTag>;
-    fn update_state(&mut self, transition: PlatoonTransition);
+const MINERAL_MINE_DISTANCE: f32 = 1.0;
+const GAS_MINE_DISTANCE: f32 = 2.5;
+const RETURN_CARGO_DISTANCE: f32 = 3.0;
+
+enum ResourceType {
+    Gas,
+    Minerals,
 }
 
-pub struct Squad {
-    pub squad_type: SquadType,
-    pub state: SquadMicroState,
-    pub members: Vec<MicroTag>,
+pub struct MinerManager {
+    miners: HashMap<u64, (MinerAssignment, MinerMicroState)>,
+    resource_assignment_counts: HashMap<u64, usize>,
+    assets: Units,
+    priority: ResourceType,
 }
 
-impl Squad {
-    pub fn new(squad_type: SquadType) -> Self {
+enum MinerAsset {
+    Resource,
+    Townhall,
+}
+struct MinerAssignment {
+    resource: Unit,
+    townhall: Unit,
+}
+
+impl Default for MinerManager {
+    fn default() -> Self {
         Self {
-            squad_type,
-            state: SquadMicroState::Idle,
-            members: Vec::new(),
+            miners: HashMap::new(),
+            assets: Units::new(),
+            priority: ResourceType::Minerals,
+            resource_assignment_counts: HashMap::new(),
         }
     }
-
-    pub fn add_unit(&mut self, unit: MicroTag) {
-        self.members.push(unit);
-    }
-
-    pub fn remove_unit(&mut self, unit: Tag) -> Option<Tag> {
-        if let Some(tag) = self.members.iter().find(|u| u.tag == unit) {
-            let out = tag.tag;
-            self.members.retain(|x| x.tag != unit);
-            return Some(out);
-        }
-        None
-    }
-
-    pub fn disband(self) -> Vec<Tag> {
-        self.members.into_iter().map(|u| u.tag).collect()
-    }
 }
 
-pub enum SquadType {
-    MineralMiners{mine_point: Point2, return_point: Point2},
-    GasMiners{mine_point: Point2, return_point: Point2},
-}
-
-pub enum PlatoonState {
-    Nominal,
-    Retreat,
-    ControlRegion,
-    Assault,
-}
-
-pub enum SquadMicroState {
+enum MinerMicroState {
     Idle,
-    AMoveForAiur,
-    StutterForAiur,
-    StutterSkirmish,
-    MineMinerals,
-    MineGas,
-    Regroup,
-    Retreat,
-    Rally,
-    KillCreep,
-}
-
-pub struct MicroTag {
-    tag: Tag,
-    micro_state: UnitMicroState,
-}
-impl PartialEq for MicroTag {
-    fn eq(&self, other: &Self) -> bool {
-        self.tag == other.tag
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.tag != other.tag
-    }
-}
-
-pub enum UnitMicroState {
-    AMove,
+    Gather,
     GatherMove(Point2),
-    Gather(u64),
-    ReturnMove(Point2),
     ReturnCargo,
-    Retreat,
-    Rally,
-    HardMove,
+    ReturnMove(Point2),
+}
+pub enum MiningError {
+    NotHarvestable(u64),
+    NoTownhalls,
+    NoResources,
 }
 
-pub struct MicroBaseManager {
-    nexus: Tag,
-    location: Point2,
-    mineral_squads: HashMap<u64, Squad>,
-    gas_squads: HashMap<u64, Squad>,
-}
-
-impl MicroBaseManager {
-    pub fn new(nexus: Tag, location: Point2, minerals: Vec<u64>, assimilators: Vec<u64>) -> Self {
-        Self {
-            nexus,
-            location,
-            mineral_squads: minerals
-                .into_iter()
-                .map(|m| (m, Squad::new(SquadType::MineralMiners)))
-                .collect(),
-            gas_squads: assimilators
-                .into_iter()
-                .map(|gl| (gl, Squad::new(SquadType::GasMiners)))
-                .collect(),
-        }
+impl MinerManager {
+    pub fn assign_miner(&mut self, miner: Unit) -> Result<(), MiningError> {
+        self.employ_miner(miner.tag())
+    }
+    fn register_unit(&mut self, unit: Unit, assignment: MinerAssignment) {
+        self.miners
+            .insert(unit.tag(), (assignment, MinerMicroState::Idle));
     }
 
-    pub fn make_gas_squad(nexus: Unit, assimilator: Unit) -> SquadType {
-    let mine_point = assimilator.position().towards(nexus.position(), 2.0);
-    let return_point = nexus.position().towards(assimilator.position(), 3.0);
-    SquadType::GasMiners{mine_point, return_point}
-}
-
-    pub fn make_mineral_squad(nexus:Unit, patch: Unit) -> SquadType {
-    let mine_point = patch.position().towards(nexus.position(), 1.0);
-    let return_point = nexus.position().towards(patch.position(), 3.0);
-    SquadType::MineralMiners{mine_point, return_point}
-}
-
-    pub fn add_assimilator(&mut self, tag: u64) {
-        self.gas_squads
-            .insert(tag, Squad::new(SquadType::GasMiners));
-        if self.gas_squads.len() > 2 {
-            println!("We have more than 2 gasses at this base: {:?}", self.nexus);
-        }
+    pub fn available_jobs(&self) -> usize {
+        self.assets
+            .iter()
+            .map(|u| {
+                if u.ideal_harvesters().is_some() {
+                    if u.is_mineral() {
+                        2
+                    } else {
+                        3
+                    }
+                } else {
+                    0
+                }
+            })
+            .sum()
     }
 
-    pub fn dismiss_assimilator(&mut self, tag: Tag) -> Option<Vec<Tag>> {
-        let squad = self.gas_squads.remove(&tag.tag)?;
-        Some(squad.disband())
-    }
+    fn remove_asset_assignments(&mut self, removed_asset: u64, asset_type: MinerAsset) -> Vec<u64> {
+        self.resource_assignment_counts.remove(&removed_asset);
+        self.assets.remove(removed_asset);
 
-    pub fn dismiss_unit(&mut self, tag: Tag) -> Option<Vec<Tag>> {
-        match tag.type_id {
-            UnitTypeId::Assimilator | UnitTypeId::AssimilatorRich => self.dismiss_assimilator(tag),
-            UnitTypeId::Probe => self.dismiss_probe(tag),
-            _ => {
-                println!("i dunno how to dismiss {tag:?}");
-                None
+        let mut out = Vec::new();
+        for (miner, (assignment, _state)) in &self.miners {
+            if match asset_type {
+                MinerAsset::Resource => &assignment.resource,
+                MinerAsset::Townhall => &assignment.townhall,
+            }
+            .tag()
+                == removed_asset
+            {
+                out.push(*miner);
             }
         }
+        for miner in &out {
+            self.miners.remove(miner);
+        }
+
+        out
     }
 
-    fn dismiss_probe(&mut self, tag: Tag) -> Option<Vec<Tag>> {
-        if let Some(probe) = self
-            .gas_squads
-            .values_mut()
-            .find_map(|gs| gs.remove_unit(tag))
-        {
-            Some(vec![probe])
+    fn remove_asset(&mut self, asset: u64, asset_type: MinerAsset) -> Vec<u64> {
+        self.assets.remove(asset);
+
+        self.remove_asset_assignments(asset, asset_type)
+    }
+
+    fn employ_miner(&mut self, miner: u64) -> Result<(), MiningError> {
+        if !self.assets.iter().any(Unit::is_townhall) {
+            // we have no townhalls
+            return Err(MiningError::NoTownhalls);
+        }
+
+        let job = self.find_job().transpose();
+        if let Some(maybe_error) = job {
+            let new_job = maybe_error?;
+            self.miners.insert(miner, (new_job, MinerMicroState::Idle));
+            let count = self.resource_assignment_counts.get(&miner).unwrap_or(&0);
+            self.resource_assignment_counts.insert(miner, count + 1);
+            Ok(())
         } else {
-            self.mineral_squads
-                .values_mut()
-                .find_map(|gs| gs.remove_unit(tag))
-                .map(|probe| vec![probe])
+            Err(MiningError::NoResources)
         }
     }
 
-    pub fn disband(self) -> Vec<Tag> {
-        let mut relinquished_units = Vec::new();
+    fn find_job(&mut self) -> Result<Option<MinerAssignment>, MiningError> {
+        let minerals = self.assets.iter().filter(|u| u.is_mineral());
+        let gasses = self
+            .assets
+            .iter()
+            .filter(|u| !u.is_mineral() && u.ideal_harvesters().is_some());
+        let find_order: Vec<&Unit> = {
+            match self.priority {
+                ResourceType::Gas => gasses.chain(minerals).collect(),
 
-        relinquished_units.append(
-            &mut self
-                .gas_squads
-                .into_values()
-                .flat_map(|s| s.disband())
-                .collect(),
-        );
-        relinquished_units.append(
-            &mut self
-                .mineral_squads
-                .into_values()
-                .flat_map(|s| s.disband())
-                .collect(),
-        );
+                ResourceType::Minerals => minerals.chain(gasses).collect(),
+            }
+        };
 
-        relinquished_units
+        for resource in find_order {
+            let count = self
+                .resource_assignment_counts
+                .get(&resource.tag())
+                .unwrap_or(&0usize);
+            let employment = self.job_at_resource(resource, *count);
+            employment?;
+        }
+        Ok(None)
+    }
+
+    fn job_at_resource(
+        &self,
+        resource: &Unit,
+        count: usize,
+    ) -> Result<Option<MinerAssignment>, MiningError> {
+        let job = {
+            let harvesters = if resource.is_mineral() { 2 } else { 3 };
+            if count <= harvesters as usize {
+                let nearest_townhall = self
+                    .assets
+                    .iter()
+                    .filter(|u| u.is_townhall())
+                    .closest(resource.position())
+                    .ok_or(MiningError::NoTownhalls)?;
+
+                let assignment = MinerAssignment {
+                    townhall: nearest_townhall.clone(),
+                    resource: resource.clone(),
+                };
+
+                Some(assignment)
+            } else {
+                // resource fully allocated
+                None
+            }
+        };
+        Ok(job)
+    }
+
+    pub fn prioritize(&mut self, resource: ResourceType) {
+        self.priority = resource;
+    }
+
+    pub fn add_resource(&mut self, unit: Unit) -> Result<(), MiningError> {
+        if unit.ideal_harvesters().is_some() {
+            self.assets.push(unit);
+            Ok(())
+        } else {
+            Err(MiningError::NotHarvestable(unit.tag()))
+        }
+    }
+
+    pub fn add_townhall(&mut self, unit: Unit) -> Result<(), MiningError> {
+        if unit.is_townhall() {
+            self.assets.push(unit);
+            Ok(())
+        } else {
+            Err(MiningError::NotHarvestable(unit.tag()))
+        }
+    }
+
+    pub fn remove_townhall(&mut self, unit: u64) -> Vec<u64> {
+        self.remove_asset(unit, MinerAsset::Townhall)
+    }
+
+    fn update_miners<'a>(&'a mut self, my_units: &'a Units) -> Vec<(&'a Unit, MicroError)> {
+        my_units
+            .iter()
+            .filter_map(|unit| {
+                let tag = unit.tag();
+                if let Some((assignment, state)) = self.miners.remove(&tag) {
+                    let new_state = worker_update(unit, state, &assignment);
+                    self.miners.insert(tag, (assignment, new_state));
+                    None
+                } else {
+                    Some((unit, MicroError::UnitNotRegistered(Tag::from_unit(unit))))
+                }
+            })
+            .collect()
+    }
+
+    fn micro_miners<'a>(&'a self, my_units: &'a Units) -> Vec<(&'a Unit, MicroError)> {
+        my_units
+            .iter()
+            .map(|unit| {
+                if let Some(state) = self.miners.get(&unit.tag()) {
+                    // do the micro
+                    Ok(())
+                } else {
+                    Err((unit, MicroError::UnitNotRegistered(Tag::from_unit(unit))))
+                }
+            })
+            .filter_map(Result::err)
+            .collect()
+    }
+}
+
+fn worker_micro(unit: &Unit, state: MinerMicroState, assignment: &MinerAssignment) {
+    match state {
+        MinerMicroState::Gather => unit.gather(assignment.resource.tag(), false),
+        MinerMicroState::GatherMove(point) => unit.move_to(Target::Pos(point), false),
+        MinerMicroState::ReturnCargo => unit.return_resource(false),
+        MinerMicroState::ReturnMove(point) => unit.move_to(Target::Pos(point), false),
+        MinerMicroState::Idle => unit.stop(false),
+    }
+}
+
+fn worker_update(
+    unit: &Unit,
+    state: MinerMicroState,
+    assignment: &MinerAssignment,
+) -> MinerMicroState {
+    match (unit.is_carrying_resource(), state) {
+        (true, MinerMicroState::ReturnMove(point)) => {
+            if unit.position().distance(point) < 0.1 {
+                MinerMicroState::ReturnCargo
+            } else {
+                MinerMicroState::ReturnMove(point)
+            }
+        }
+        (true, MinerMicroState::ReturnCargo) => MinerMicroState::ReturnCargo,
+        (false, MinerMicroState::ReturnCargo) => MinerMicroState::GatherMove(
+            assignment
+                .resource
+                .position()
+                .towards(unit.position(), MINERAL_MINE_DISTANCE),
+        ),
+        (false, MinerMicroState::GatherMove(point)) => {
+            if unit.position().distance(point) < 0.1 {
+                MinerMicroState::Gather
+            } else {
+                MinerMicroState::GatherMove(point)
+            }
+        }
+        (false, MinerMicroState::Gather) => MinerMicroState::Gather,
+        (true, MinerMicroState::Gather) => MinerMicroState::ReturnMove(
+            assignment
+                .townhall
+                .position()
+                .towards(unit.position(), RETURN_CARGO_DISTANCE),
+        ),
+        _ => MinerMicroState::ReturnCargo,
     }
 }

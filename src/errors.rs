@@ -2,6 +2,8 @@ use std::fmt::Debug;
 
 use rust_sc2::prelude::Point2;
 
+use crate::Tag;
+
 pub struct UnitEmploymentError(pub String);
 impl Debug for UnitEmploymentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,4 +32,12 @@ pub enum BuildError {
     NoPower(Point2),
 }
 
-pub struct TransitionError;
+pub enum TransitionError {
+    InvalidTransition,
+    InvalidUnit,
+}
+pub enum MicroError {
+    UnitNotRegistered(Tag),
+    SquadDisbanded,
+    PlatoonDisbanded,
+}

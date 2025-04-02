@@ -45,14 +45,11 @@ impl BuildingStatus {
         }
     }
 
-    pub fn is_mine(&self) -> bool {
-        match self {
-            Self::Built(_, _) | Self::Constructing(_, _) => true,
-            _ => false,
-        }
+    pub const fn is_mine(&self) -> bool {
+        matches!(self, Self::Built(_, _) | Self::Constructing(_, _))
     }
 
-    pub fn depower(self) -> Result<Self, TransitionError> {
+    pub const fn depower(self) -> Result<Self, TransitionError> {
         use PylonPower as P;
         match self {
             Self::Blocked(whatever, P::Powered) => Ok(Self::Blocked(whatever, P::Depowered)),
@@ -61,11 +58,11 @@ impl BuildingStatus {
             Self::Constructing(whatever, P::Powered) => {
                 Ok(Self::Constructing(whatever, P::Depowered))
             }
-            _ => Err(TransitionError),
+            _ => Err(TransitionError::InvalidTransition),
         }
     }
 
-    pub fn repower(self) -> Result<Self, TransitionError> {
+    pub const fn repower(self) -> Result<Self, TransitionError> {
         use PylonPower as P;
         match self {
             Self::Blocked(whatever, P::Depowered) => Ok(Self::Blocked(whatever, P::Powered)),
@@ -108,22 +105,22 @@ impl Display for BuildingLocation {
     }
 }
 impl BuildingLocation {
-    pub fn new(location: Point2, size: SlotSize, intention: Option<UnitTypeId>) -> Self {
+    pub const fn new(location: Point2, size: SlotSize, intention: Option<UnitTypeId>) -> Self {
         Self {
             location,
             status: BuildingStatus::Free(intention, PylonPower::Depowered),
             size,
         }
     }
-    pub fn pylon(location: Point2) -> Self {
+    pub const fn pylon(location: Point2) -> Self {
         Self::new(location, SlotSize::Small, Some(UnitTypeId::Pylon))
     }
 
-    pub fn standard(location: Point2) -> Self {
+    pub const fn standard(location: Point2) -> Self {
         Self::new(location, SlotSize::Standard, None)
     }
 
-    pub fn is_free(&self) -> bool {
+    pub const fn is_free(&self) -> bool {
         matches!(self.status, BuildingStatus::Free(_, _))
     }
 
@@ -145,7 +142,7 @@ impl BuildingLocation {
                 if self.status.can_build(&tag.type_id) {
                     Ok(S::Constructing(tag, power))
                 } else {
-                    Err(TransitionError)
+                    Err(TransitionError::InvalidTransition)
                 }
             }
             (T::Obstruct, S::Free(intent, power)) => Ok(S::Blocked(intent, power)),
@@ -157,16 +154,20 @@ impl BuildingLocation {
             }
             (T::UnObstruct, S::Blocked(intent, power)) => Ok(S::Free(intent, power)),
 
-            (T::UnObstruct, _) => Err(TransitionError),
+            (T::UnObstruct, _) => Err(TransitionError::InvalidTransition),
 
-            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError),
+            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError::InvalidTransition),
 
-            (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => Err(TransitionError),
+            (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => {
+                Err(TransitionError::InvalidTransition)
+            }
 
-            (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => Err(TransitionError),
+            (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => {
+                Err(TransitionError::InvalidTransition)
+            }
 
             (T::Obstruct | T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
-                Err(TransitionError)
+                Err(TransitionError::InvalidTransition)
             }
         }?;
         self.status = new_status;
@@ -491,7 +492,7 @@ impl ReBiCycler {
         let position = self
             .siting_director
             .get_available_building_sites(&size, &structure_type)
-            .find(|bl| self.location_is_blocked(bl, structure_type));
+            .find(|bl| self.location_is_not_blocked(bl, structure_type));
 
         if let Some(position) = position {
             let builder = self
@@ -569,7 +570,7 @@ impl ReBiCycler {
             .building_locations
             .values()
             .map(|bl| {
-                self.location_is_blocked(
+                self.location_is_not_blocked(
                     bl,
                     if let BuildingStatus::Free(Some(type_id), _) = bl.status {
                         type_id
@@ -597,7 +598,7 @@ impl ReBiCycler {
         println!("Building locations updated: {:?}", self.siting_director);
     }
 
-    fn location_is_blocked(
+    fn location_is_not_blocked(
         &self,
         build_location: &BuildingLocation,
         structure_type: UnitTypeId,
@@ -612,14 +613,16 @@ impl ReBiCycler {
                 false,
             )
             .unwrap()[0];
-        if result != ActionResult::Success {
+        if result == ActionResult::Success {
+            true
+        } else if result == ActionResult::CantBuildLocationInvalid {
+            false
+        } else {
             println!(
                 "Location {:?} is blocked: {:?}",
                 build_location.location, result
             );
             false
-        } else {
-            true
         }
     }
 }

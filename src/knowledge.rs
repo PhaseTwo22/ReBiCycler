@@ -10,7 +10,8 @@ use rust_sc2::{
 #[derive(Default)]
 pub struct Knowledge {
     pub confirmed_dead: HashMap<u64, UnitKnowledge>,
-    pub first_seen_enemy_times: HashMap<UnitTypeId, usize>,
+    pub first_seen_unit_times: HashMap<UnitTypeId, usize>,
+    pub first_seen_friendly_times: HashMap<UnitTypeId, usize>,
     pub seen_units: HashMap<u64, UnitKnowledge>,
 }
 
@@ -48,24 +49,25 @@ impl crate::protoss_bot::ReBiCycler {
 
         self.knowledge.update_seen_units(&seen_units, frame_no);
 
-        self.knowledge.add_newly_seen_foes(&seen_units, frame_no);
+        self.knowledge.add_newly_seen_units(&seen_units, frame_no);
     }
 }
 
 impl Knowledge {
-    pub fn add_newly_seen_foes(&mut self, enemies: &Units, frame_no: usize) {
-        let new_foes: HashSet<UnitTypeId> = enemies
+    pub fn add_newly_seen_units(&mut self, units: &Units, frame_no: usize) {
+        let new_units: HashSet<UnitTypeId> = units
             .iter()
             .filter_map(|u| {
-                if u.is_enemy() && !self.first_seen_enemy_times.contains_key(&u.type_id()) {
+                if !self.first_seen_unit_times.contains_key(&u.type_id()) {
                     Some(u.type_id())
                 } else {
                     None
                 }
             })
             .collect();
-        for unit_type in new_foes {
-            self.first_seen_enemy_times.insert(unit_type, frame_no);
+        for unit_type in new_units {
+            self.first_seen_unit_times.insert(unit_type, frame_no);
+            println!("Newly seen: {unit_type:?}; frame {frame_no:?}");
         }
     }
 
