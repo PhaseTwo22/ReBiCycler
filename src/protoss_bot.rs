@@ -1,20 +1,17 @@
 use std::collections::HashMap;
 
-use crate::base_manager::BaseManager;
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
-use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
 use crate::siting::SitingDirector;
-use crate::Tag;
+use crate::{is_assimilator, Tag};
 
 use rust_sc2::prelude::*;
 #[bot]
 #[derive(Default)]
 pub struct ReBiCycler {
     pub build_order: BuildOrder,
-    pub base_managers: Vec<BaseManager>,
     pub siting_director: SitingDirector,
     pub knowledge: Knowledge,
     pub mining_manager: MinerManager,
@@ -29,8 +26,11 @@ impl Player for ReBiCycler {
 
         let map_center = self.game_info.map_center;
 
-        self.siting_director
-            .initialize_global_placement(self.expansions.clone().as_slice(), map_center);
+        self.siting_director.initialize_global_placement(
+            self.expansions.clone().as_slice(),
+            self.units.vespene_geysers.clone(),
+            map_center,
+        );
         println!("Building templates placed: {:?}", self.siting_director);
         self.update_building_obstructions();
 
@@ -45,11 +45,13 @@ impl Player for ReBiCycler {
             .cloned()
             .collect();
         for mineral in nearby_minerals {
-            self.mining_manager.add_resource(mineral);
+            if let Err(e) = self.mining_manager.add_resource(mineral) {
+                println!("Error adding initial minerals: {e:?}");
+            };
         }
 
         for worker in &self.units.my.workers.clone() {
-            if self.reassign_worker_to_nearest_base(worker).is_err() {
+            if self.back_to_work(worker).is_err() {
                 println!("No bases at game start?!");
             }
         }
@@ -86,7 +88,6 @@ impl Player for ReBiCycler {
                     println!("ConstructionComplete but unit not found! {building_tag}");
                     return Ok(());
                 };
-
                 println!(
                     "Building Finished! {:?}, {building_tag}",
                     building.type_id()
@@ -97,7 +98,18 @@ impl Player for ReBiCycler {
                         println!("BaseManager failed to initialize: {e:?}");
                     }
                 } else if building.type_id() == UnitTypeId::Pylon {
-                    self.update_building_power(UnitTypeId::Pylon, building.position(), true);
+                    if let Err(e) =
+                        self.update_building_power(UnitTypeId::Pylon, building.position(), true)
+                    {
+                        println!(
+                            "Error in powering buildings when Pylon {building_tag:?} completed: {e:?}"
+                        );
+                    }
+                } else if is_assimilator(building.type_id()) {
+                    let bc = building.clone();
+                    if let Err(e) = self.mining_manager.add_resource(bc) {
+                        println!("I expected this to be harvestable: {e:?}");
+                    };
                 }
             }
             Event::UnitCreated(unit_tag) => {
@@ -107,7 +119,7 @@ impl Player for ReBiCycler {
                 };
                 //println!("New Unit! {:?}, {}", unit.type_id(), unit_tag);
                 if unit.type_id() == UnitTypeId::Probe && self.game_started {
-                    if let Err(e) = self.reassign_worker_to_nearest_base(&unit) {
+                    if let Err(e) = self.back_to_work(&unit) {
                         println!("Unable to assign new probe to a nexus? {e:?}");
                     }
                 }
@@ -125,12 +137,7 @@ impl Player for ReBiCycler {
                         type_id: unit_details.type_id,
                     };
                     if crate::is_assimilator(unit_details.type_id) {
-                        let none_found = self
-                            .base_managers
-                            .iter_mut()
-                            .map(|bm| bm.unassign_unit(&unit_tag))
-                            .all(|x| x.is_err());
-                        if none_found {
+                        if let Err(none_found) = self.siting_director.lose_assimilator(unit_tag) {
                             println!("We couldn't find the assimilator to destroy");
                         }
                     } else if crate::is_protoss_building(unit_details.type_id) {
@@ -141,11 +148,13 @@ impl Player for ReBiCycler {
                         if unit_details.type_id == UnitTypeId::Pylon
                             || unit_details.type_id == UnitTypeId::WarpPrismPhasing
                         {
-                            self.update_building_power(
+                            if let Err(e) = self.update_building_power(
                                 unit_details.type_id,
                                 unit_details.last_position,
                                 false,
-                            );
+                            ) {
+                                println!("Error depowering pylon: {e:?}");
+                            }
                         }
                     }
                 }
@@ -161,14 +170,10 @@ impl Player for ReBiCycler {
                 if (building.type_id() == UnitTypeId::Assimilator)
                     | (building.type_id() == UnitTypeId::AssimilatorRich)
                 {
-                    let add_attempts: Vec<Result<(), BuildError>> = self
-                        .base_managers
-                        .iter_mut()
-                        .map(|bm| bm.add_building(&building))
-                        .collect();
-
-                    if !add_attempts.iter().any(Result::is_ok) {
-                        println!("Nowhere could place the assimilator we just started.");
+                    if let Err(problem) = self.siting_director.add_assimilator(&building) {
+                        println!(
+                            "Nowhere could place the assimilator we just started. {problem:?}"
+                        );
                     }
                 } else if let Err(e) = self
                     .siting_director

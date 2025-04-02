@@ -6,11 +6,13 @@ use std::{
 };
 
 use crate::{
-    errors::{BuildError, TransitionError},
+    errors::{BuildError, TransitionError, UnitEmploymentError},
     protoss_bot::ReBiCycler,
     Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
+
+const ACCEPTABLE_GAS_DISTANCE: f32 = 12.0;
 
 #[allow(dead_code)]
 const EXPANSION_NAMES: [&str; 48] = [
@@ -28,9 +30,10 @@ pub enum BuildingStatus {
     Constructing(Tag, PylonPower),
 }
 impl BuildingStatus {
-    pub fn can_build(&self, type_id: &UnitTypeId) -> bool {
+    pub fn can_build(&self, type_id: UnitTypeId) -> bool {
         match self {
-            Self::Free(
+            Self::Free(None, PylonPower::Powered)
+            | Self::Free(
                 Some(
                     UnitTypeId::Pylon
                     | UnitTypeId::Nexus
@@ -39,8 +42,7 @@ impl BuildingStatus {
                 ),
                 _,
             ) => true,
-            Self::Free(None, PylonPower::Powered) => true,
-            Self::Free(Some(intent), PylonPower::Powered) => intent == type_id,
+            Self::Free(Some(intent), PylonPower::Powered) => *intent == type_id,
             _ => false,
         }
     }
@@ -49,7 +51,7 @@ impl BuildingStatus {
         matches!(self, Self::Built(_, _) | Self::Constructing(_, _))
     }
 
-    pub const fn depower(self) -> Result<Self, TransitionError> {
+    pub fn depower(self) -> Result<Self, TransitionError> {
         use PylonPower as P;
         match self {
             Self::Blocked(whatever, P::Powered) => Ok(Self::Blocked(whatever, P::Depowered)),
@@ -58,20 +60,47 @@ impl BuildingStatus {
             Self::Constructing(whatever, P::Powered) => {
                 Ok(Self::Constructing(whatever, P::Depowered))
             }
-            _ => Err(TransitionError::InvalidTransition),
+            _ => Err(TransitionError::InvalidTransition(format!(
+                "DePower: {self:?}"
+            ))),
         }
     }
 
-    pub const fn repower(self) -> Result<Self, TransitionError> {
+    pub const fn repower(self) -> Self {
         use PylonPower as P;
         match self {
-            Self::Blocked(whatever, P::Depowered) => Ok(Self::Blocked(whatever, P::Powered)),
-            Self::Free(whatever, P::Depowered) => Ok(Self::Free(whatever, P::Powered)),
-            Self::Built(whatever, P::Depowered) => Ok(Self::Built(whatever, P::Powered)),
-            Self::Constructing(whatever, P::Depowered) => {
-                Ok(Self::Constructing(whatever, P::Powered))
-            }
-            other => Ok(other), // powered buildings can be powered multiple times
+            Self::Blocked(whatever, P::Depowered) => Self::Blocked(whatever, P::Powered),
+            Self::Free(whatever, P::Depowered) => Self::Free(whatever, P::Powered),
+            Self::Built(whatever, P::Depowered) => Self::Built(whatever, P::Powered),
+            Self::Constructing(whatever, P::Depowered) => Self::Constructing(whatever, P::Powered),
+            other => other, // powered buildings can be powered multiple times
+        }
+    }
+}
+
+pub struct GasLocation {
+    pub geyser_tag: u64,
+    pub location: Point2,
+    pub status: BuildingStatus,
+}
+
+impl GasLocation {
+    pub fn from_unit(unit: &Unit) -> Self {
+        Self {
+            geyser_tag: unit.tag(),
+            location: unit.position(),
+            status: BuildingStatus::Free(
+                Some(UnitTypeId::Assimilator),
+                crate::siting::PylonPower::Depowered,
+            ),
+        }
+    }
+
+    pub fn is_here(&self, building: &Tag) -> bool {
+        use BuildingStatus as S;
+        match self.status {
+            S::Built(tag, _) | S::Constructing(tag, _) => *building == tag,
+            _ => false,
         }
     }
 }
@@ -82,6 +111,7 @@ pub enum PylonPower {
     Depowered,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum BuildingTransition {
     Destroy,
     Obstruct,
@@ -137,37 +167,63 @@ impl BuildingLocation {
         use BuildingTransition as T;
         let new_status = match (transition, self.status.clone()) {
             (T::DePower, state) => state.depower(),
-            (T::RePower, state) => state.repower(),
+            (T::RePower, state) => Ok(state.repower()),
             (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(&tag.type_id) {
+                if self.status.can_build(tag.type_id) {
                     Ok(S::Constructing(tag, power))
                 } else {
-                    Err(TransitionError::InvalidTransition)
+                    Err(TransitionError::InvalidTransition(format!(
+                        "{:?}: {:?}",
+                        transition,
+                        self.status.clone()
+                    )))
                 }
             }
-            (T::Obstruct, S::Free(intent, power)) => Ok(S::Blocked(intent, power)),
+            (T::Obstruct, S::Free(intent, power) | S::Blocked(intent, power)) => {
+                Ok(S::Blocked(intent, power))
+            }
 
             (T::Finish, S::Constructing(tag, power)) => Ok(S::Built(tag, power)),
 
             (T::Destroy, S::Built(tag, power) | S::Constructing(tag, power)) => {
                 Ok(S::Free(Some(tag.type_id), power))
             }
-            (T::UnObstruct, S::Blocked(intent, power)) => Ok(S::Free(intent, power)),
+            (T::UnObstruct, S::Blocked(intent, power) | S::Free(intent, power)) => {
+                Ok(S::Free(intent, power))
+            }
 
-            (T::UnObstruct, _) => Err(TransitionError::InvalidTransition),
+            (T::UnObstruct, _) => Err(TransitionError::InvalidTransition(format!(
+                "{:?}: {:?}",
+                transition,
+                self.status.clone()
+            ))),
 
-            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError::InvalidTransition),
+            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError::InvalidTransition(
+                format!("{:?}: {:?}", transition, self.status.clone()),
+            )),
 
             (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => {
-                Err(TransitionError::InvalidTransition)
+                Err(TransitionError::InvalidTransition(format!(
+                    "{:?}: {:?}",
+                    transition,
+                    self.status.clone()
+                )))
             }
 
             (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => {
-                Err(TransitionError::InvalidTransition)
+                Err(TransitionError::InvalidTransition(format!(
+                    "{:?}: {:?}",
+                    transition,
+                    self.status.clone()
+                )))
             }
 
-            (T::Obstruct | T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
-                Err(TransitionError::InvalidTransition)
+            (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+                Err(TransitionError::InvalidTransition(format!(
+                    "{:?}: {:?}",
+                    transition,
+                    self.status.clone()
+                )))
             }
         }?;
         self.status = new_status;
@@ -266,6 +322,7 @@ impl SlotSize {
 #[derive(Default)]
 pub struct SitingDirector {
     building_locations: HashMap<Point2, BuildingLocation>,
+    gas_locations: HashMap<u64, GasLocation>,
 }
 impl Debug for SitingDirector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -292,11 +349,54 @@ impl Debug for SitingDirector {
 }
 
 impl SitingDirector {
-    pub fn initialize_global_placement(&mut self, expansions: &[Expansion], map_center: Point2) {
+    pub fn initialize_global_placement(
+        &mut self,
+        expansions: &[Expansion],
+        geysers: Units,
+        map_center: Point2,
+    ) {
         let _: () = expansions
             .iter()
             .map(|e| self.build_expansion_template(e.loc, e.center, map_center))
             .collect();
+
+        let _: () = geysers
+            .iter()
+            .map(|u| {
+                self.gas_locations
+                    .insert(u.tag(), GasLocation::from_unit(u));
+            })
+            .collect();
+    }
+
+    pub fn add_assimilator(&mut self, building: &Unit) -> Result<(), BuildError> {
+        let geyser = self
+            .gas_locations
+            .values_mut()
+            .find(|gl| gl.location == building.position())
+            .ok_or_else(|| BuildError::NoBuildingLocationHere(building.position()))?;
+        geyser.status = BuildingStatus::Built(Tag::from_unit(building), PylonPower::Depowered);
+        Ok(())
+    }
+
+    pub fn lose_assimilator(&mut self, building: Tag) -> Result<(), UnitEmploymentError> {
+        let geyser = self
+            .gas_locations
+            .values_mut()
+            .find(|gl| gl.is_here(&building))
+            .ok_or_else(|| {
+                UnitEmploymentError(format!(
+                    "We didn't have a built geyser with this tag: {building:?}",
+                ))
+            })?;
+        geyser.status = BuildingStatus::Free(Some(UnitTypeId::Assimilator), PylonPower::Depowered);
+        Ok(())
+    }
+
+    pub fn get_free_geyser(&self, near: Point2, distance: f32) -> Option<&GasLocation> {
+        self.gas_locations.values().find(|gl| {
+            gl.location.distance(near) <= distance && gl.status.can_build(UnitTypeId::Assimilator)
+        })
     }
 
     pub fn construction_begin(&mut self, tag: Tag, location: Point2) -> Result<(), BuildError> {
@@ -312,8 +412,8 @@ impl SitingDirector {
         self.building_locations.get_mut(&location).map_or(
             Err(BuildError::NoBuildingLocationHere(location)),
             |spot| {
-                spot.transition(BuildingTransition::Construct(tag));
-                Ok(())
+                spot.transition(BuildingTransition::Construct(tag))
+                    .map_err(|_| BuildError::NoBuildingLocationHere(location))
             },
         )
     }
@@ -322,14 +422,15 @@ impl SitingDirector {
         self.building_locations
             .get_mut(&location)
             .ok_or(BuildError::NoBuildingLocationHere(location))?
-            .transition(BuildingTransition::Obstruct);
-        Ok(())
+            .transition(BuildingTransition::Obstruct)
+            .map_err(|_| BuildError::NoBuildingLocationHere(location))
     }
 
     fn build_expansion_template(
         &mut self,
         base_location: Point2,
         mineral_center: Point2,
+
         map_center: Point2,
     ) {
         let distance_to_minerals = 6.0;
@@ -367,7 +468,7 @@ impl SitingDirector {
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
         self.building_locations.values().filter(|bl| {
-            let fits_intention = bl.status.can_build(type_id);
+            let fits_intention = bl.status.can_build(*type_id);
             let fits_size = bl.size == *size;
             fits_size && fits_intention
         })
@@ -385,7 +486,7 @@ impl SitingDirector {
         self.building_locations
             .values()
             .filter(|bl| {
-                let fits_intention = bl.status.can_build(&type_id);
+                let fits_intention = bl.status.can_build(type_id);
                 let fits_size = bl.size == size;
                 fits_size && fits_intention
             })
@@ -513,13 +614,12 @@ impl ReBiCycler {
     /// # Errors
     /// `BuildError::NoPlacementLocations` when no geysers are free at any base.
     pub fn build_gas(&self) -> Result<(), BuildError> {
-        let base = self
-            .base_managers
-            .iter()
-            .find(|bm| bm.get_free_geyser().is_some())
-            .ok_or(BuildError::NoPlacementLocations)?;
-
-        self.take_gas(base.location)
+        for nexus in &self.units.my.townhalls {
+            if self.take_gas(nexus.position()).is_ok() {
+                return Ok(());
+            }
+        }
+        Err(BuildError::NoPlacementLocations)
     }
 
     pub fn update_building_power(
@@ -540,7 +640,7 @@ impl ReBiCycler {
                 .values_mut()
                 .filter(|bl| bl.location.distance(matrix.pos) <= matrix.radius)
             {
-                bl.transition(BuildingTransition::RePower);
+                let _ = bl.transition(BuildingTransition::RePower);
             }
         } else if unit_change == UnitTypeId::Pylon {
             for bl in self
@@ -549,7 +649,9 @@ impl ReBiCycler {
                 .values_mut()
                 .filter(|bl| bl.location.distance(power_point) <= PYLON_POWER_RADIUS)
             {
-                bl.transition(BuildingTransition::DePower);
+                if let Err(e) = bl.transition(BuildingTransition::DePower) {
+                    println!("{e:?}");
+                };
             }
         } else {
             for bl in self
@@ -558,7 +660,9 @@ impl ReBiCycler {
                 .values_mut()
                 .filter(|bl| bl.location.distance(power_point) <= PRISM_POWER_RADIUS)
             {
-                bl.transition(BuildingTransition::DePower);
+                if let Err(e) = bl.transition(BuildingTransition::DePower) {
+                    println!("{e:?}");
+                };
             }
         }
         Ok(())
@@ -588,9 +692,11 @@ impl ReBiCycler {
             .zip(blocked)
             .map(|(bl, can_place)| {
                 if can_place {
-                    bl.transition(BuildingTransition::UnObstruct);
-                } else {
-                    bl.transition(BuildingTransition::Obstruct);
+                    if let Err(e) = bl.transition(BuildingTransition::UnObstruct) {
+                        println!("{e:?}");
+                    };
+                } else if let Err(e) = bl.transition(BuildingTransition::Obstruct) {
+                    println!("{e:?}");
                 }
             })
             .collect();
@@ -623,6 +729,47 @@ impl ReBiCycler {
                 build_location.location, result
             );
             false
+        }
+    }
+
+    /// Assigns a worker to the nearest base.
+    ///
+    /// # Errors
+    /// `UnitEmploymentError` if no base managers exist, or we have no townhalls.
+    pub fn back_to_work(&mut self, worker: &Unit) -> Result<(), UnitEmploymentError> {
+        self.mining_manager.assign_miner(worker);
+        Ok(())
+    }
+
+    /// When a new base finishes, we want to make a new Base Manager for it.
+    /// Add the resources and existing buildings, if any.
+    /// # Errors
+    /// `BuildError::NoBuildingLocationHere` if the base isn't on an expansion location
+    pub fn new_base_finished(&mut self, nexus: &Unit) -> Result<(), BuildError> {
+        self.mining_manager.add_townhall(nexus.clone());
+        Ok(())
+    }
+    /// Finds a gas to take at the specified base and builds it
+    /// # Errors
+    /// `BuildError::NoPlacementLocations` when there's no geysers free at this base
+    /// `BuildError::NoBuildingLocationHere` when this isn't an expansion location
+    pub fn take_gas(&self, near: Point2) -> Result<(), BuildError> {
+        let gas = self
+            .siting_director
+            .get_free_geyser(near, ACCEPTABLE_GAS_DISTANCE);
+        if let Some(geyser) = gas {
+            let builder = self
+                .units
+                .my
+                .workers
+                .closest(geyser.location)
+                .ok_or(BuildError::NoTrainer)?;
+            builder.build_gas(geyser.geyser_tag, false);
+            builder.sleep(5);
+            println!("Build command sent: Assimilator");
+            Ok(())
+        } else {
+            Err(BuildError::NoPlacementLocations)
         }
     }
 }
