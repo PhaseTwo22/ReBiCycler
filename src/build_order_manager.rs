@@ -135,7 +135,7 @@ impl ReBiCycler {
                 self.validate_building_locations();
                 self.build(unit_type)
             }
-            BuildOrderAction::Train(unit_type, _) => self.train(unit_type),
+            BuildOrderAction::Train(unit_type, ablilty) => self.train(unit_type, ability),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(ability),
             BuildOrderAction::Research(upgrade, researcher, ability) => {
                 self.research(researcher, upgrade, ability)
@@ -156,40 +156,31 @@ impl ReBiCycler {
         }
     }
 
-    fn train(&self, unit_type: UnitTypeId) -> Result<(), BuildError> {
-        if self.has_upgrade(UpgradeId::WarpGateResearch) {
-            self.warp_in(unit_type)
-        } else {
-            self.units
+    fn train(&self, unit_type: UnitTypeId, ability: AbilityId) -> Result<(), BuildError> {
+        let trainer = self.units
                 .my
-                .townhalls
+                .structures
                 .idle()
                 .iter()
+                .filter(|s| s.has_ability(ability))
                 .next()
-                .ok_or(BuildError::NoTrainer)?
-                .train(unit_type, false);
+                .ok_or(BuildError::NoTrainer)?;
+
+if trainer.type_id() == UnitTypeId::WarpGate {
+            self.warp_in(unit_type, trainer)
+        } else {
+                trainer.train(unit_type, false);
             Ok(())
         }
     }
 
-    fn warp_in(&self, unit_type: UnitTypeId) -> Result<(), BuildError> {
+    fn warp_in(&self, unit_type: UnitTypeId, warpgate: &Unit) -> Result<(), BuildError> {
         let unit_width = 2.0;
-        if !self.has_upgrade(UpgradeId::WarpGateResearch) {
-            return Err(BuildError::WarpGateNotResearched);
-        }
         let booster_structures = self.units.my.all.of_types(&vec![
             UnitTypeId::Pylon,
             UnitTypeId::Nexus,
             UnitTypeId::WarpPrismPhasing,
         ]);
-
-        let idle_warpgates = self
-            .units
-            .my
-            .structures
-            .idle()
-            .of_type(UnitTypeId::WarpGate);
-        let warpgate = idle_warpgates.first().ok_or(BuildError::NoTrainer)?;
 
         let is_fast = |matrix: &&PsionicMatrix| {
             !booster_structures
