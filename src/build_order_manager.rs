@@ -157,14 +157,15 @@ impl ReBiCycler {
     }
 
     fn train(&self, unit_type: UnitTypeId, ability: AbilityId) -> Result<(), BuildError> {
-        let trainer = self.units
+        let trainers = self.units
                 .my
                 .structures
-                .idle()
-                .iter()
-                .filter(|s| s.has_ability(ability))
+                .iter().peekable()
+                .filter(|s| s.has_ability(ability));
+trainers.peek().ok_or(BuildError::NoTrainer);
+let trainer = trainers.filter(|u| u.is_idle())
                 .next()
-                .ok_or(BuildError::NoTrainer)?;
+                .ok_or(BuildError::AllTrainersBusy)?;
 
 if trainer.type_id() == UnitTypeId::WarpGate {
             self.warp_in(unit_type, trainer)
