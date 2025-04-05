@@ -165,7 +165,7 @@ impl ReBiCycler {
 trainers.peek().ok_or(BuildError::NoTrainer);
 let trainer = trainers.filter(|u| u.is_idle())
                 .next()
-                .ok_or(BuildError::AllTrainersBusy)?;
+                .ok_or(BuildError::AllBusy(ability))?;
 
 if trainer.type_id() == UnitTypeId::WarpGate {
             self.warp_in(unit_type, trainer)
