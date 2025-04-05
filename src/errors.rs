@@ -25,6 +25,7 @@ pub enum BuildError {
     InvalidUnit(String),
     NoTrainer,
     AllBusy(AbilityId),
+    AllChronoed(AbilityId),
     AlreadyResearching,
     NoBuildItemsLeft,
     WarpGateNotResearched,
