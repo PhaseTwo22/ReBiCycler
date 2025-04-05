@@ -24,6 +24,7 @@ pub enum BuildError {
     CantAfford,
     InvalidUnit(String),
     NoTrainer,
+    AllBusy(AbilityId),
     AlreadyResearching,
     NoBuildItemsLeft,
     WarpGateNotResearched,
