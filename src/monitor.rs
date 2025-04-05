@@ -19,19 +19,30 @@ count_and_max.insert(ability,(count + 1, f32::max(progress, top_progress)));
 count_and_max
 }
 
+
+fn army_composition(&self) {
+let mut count:HashMap<UnitTypeId, usize>
+let _ : ()= self.units.my.units.iter().filter(|u| !u.is_worker()).map( |u| {
+increment_map(&mut count, u.type_id())
+}
+).collect();
+count
+}
+
 }
 
 
 fn count_unit_types(units: Units) -> HashMap<UnitTypeId, usize> {
 let mut counts : HashMap<UnitTypeId, usize> = HashMap::new();
 let _ : () = units.iter().map(|u| {
-let new_count = counts.get(u.type_id()).unwrap_or(0) + 1;
-counts.insert(u.type_id(), new_count);
+increment_map(&mut counts, u.type_id())
 }).collect();
 counts
 }
 
 
 
+fn increment_map<T>(map:&mut HashMap<T,usize>, key:  T) {
+let new_count = map.get(key).unwrap_or(0) + 1;
+map.insert(key, new_count);
 }
-
