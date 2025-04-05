@@ -247,7 +247,7 @@ if trainer.type_id() == UnitTypeId::WarpGate {
             .structures
             .iter()
             .find(|s| s.is_using(ability) && !s.has_buff(BuffId::ChronoBoostEnergyCost))
-            .ok_or(BuildError::NoTrainer)?;
+            .ok_or(BuildError::AllChronoed(ability))?;
 
         nexus.command(
             AbilityId::EffectChronoBoostEnergyCost,
