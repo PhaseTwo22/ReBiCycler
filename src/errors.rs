@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use rust_sc2::prelude::Point2;
+use rust_sc2::{ids::AbilityId, prelude::Point2};
 
 pub struct UnitEmploymentError(pub String);
 impl Debug for UnitEmploymentError {

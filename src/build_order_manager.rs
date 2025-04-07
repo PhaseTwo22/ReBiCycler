@@ -135,7 +135,7 @@ impl ReBiCycler {
                 self.validate_building_locations();
                 self.build(unit_type)
             }
-            BuildOrderAction::Train(unit_type, ablilty) => self.train(unit_type, ability),
+            BuildOrderAction::Train(unit_type, ability) => self.train(unit_type, ability),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(ability),
             BuildOrderAction::Research(upgrade, researcher, ability) => {
                 self.research(researcher, upgrade, ability)
@@ -157,20 +157,22 @@ impl ReBiCycler {
     }
 
     fn train(&self, unit_type: UnitTypeId, ability: AbilityId) -> Result<(), BuildError> {
-        let trainers = self.units
-                .my
-                .structures
-                .iter().peekable()
-                .filter(|s| s.has_ability(ability));
-trainers.peek().ok_or(BuildError::NoTrainer);
-let trainer = trainers.filter(|u| u.is_idle())
-                .next()
-                .ok_or(BuildError::AllBusy(ability))?;
+        let mut trainers = self
+            .units
+            .my
+            .structures
+            .iter()
+            .filter(|s| s.has_ability(ability))
+            .peekable();
+        trainers.peek().ok_or(BuildError::NoTrainer)?;
+        let trainer = trainers
+            .find(|u| u.is_idle())
+            .ok_or(BuildError::AllBusy(ability))?;
 
-if trainer.type_id() == UnitTypeId::WarpGate {
+        if trainer.type_id() == UnitTypeId::WarpGate {
             self.warp_in(unit_type, trainer)
         } else {
-                trainer.train(unit_type, false);
+            trainer.train(unit_type, false);
             Ok(())
         }
     }
