@@ -3,22 +3,31 @@ fn monitor(&self) {
 
 }
 
-fn idle_facilities(&self) {
-let idle_structures = self.units.my.structures.idle();
+fn production_tab (&self) {
+
+}
+
+fn idle_production_facilities(&self) {
+let idle_structures = self.units.my.structures.idle().filter(|u|crate::is_protoss_production(u.type_id());
 count_unit_types(idle_structures)
 }
 
 fn busy_facilities(&self) {
-let count_and_max : HashMap<AbilityId, (usize, f32)> = HashMap::new();
-let busy = self.units.my.structures.iter().filter_map(|u| u.order());
+let count_and_max : HashMap<(UnitTypeId, AbilityId), (usize, f32)> = HashMap::new();
+let busy = self.units.my.structures.iter().filter_map(|u| if u.order().is_some() {Some((u.type_id(), u.order())} else {None});
 
-for (ability, _target, progress) in busy {
-let (count, top_progress) = count_and_max.get(ability).unwrap_or(0,0.0);
-count_and_max.insert(ability,(count + 1, f32::max(progress, top_progress)));
+for (unit_type, (ability, _target, progress)) in busy {
+let (count, top_progress) = count_and_max.get((unit_type, ability)).unwrap_or(0,0.0);
+count_and_max.insert((unit_type,ability),(count + 1, f32::max(progress, top_progress)));
 }
 count_and_max
 }
 
+
+fn idle_tech_structures(&self) {
+let idle_structures = self.units.my.structures.idle().filter(|u|crate::is_protoss_tech(u.type_id());
+count_unit_types(idle_structures)
+}
 
 fn army_composition(&self) {
 let mut count:HashMap<UnitTypeId, usize>
