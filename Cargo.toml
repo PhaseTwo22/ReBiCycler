@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 rust-sc2 = { git = "https://github.com/UltraMachine/rust-sc2" }
+console = "0.15.11"
+itertools = "0.14.0"

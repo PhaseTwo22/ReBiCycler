@@ -1,0 +1,171 @@
+use std::{
+    collections::HashMap,
+    fmt::{self},
+};
+
+use console::{measure_text_width, strip_ansi_codes, truncate_str, Term};
+use itertools::Itertools;
+
+struct Pane {
+    name: String,
+    width: usize,
+    rows: usize,
+    content: Vec<String>,
+}
+
+impl fmt::Debug for Pane {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} [{}x{}]: {:?}",
+            self.name, self.width, self.rows, self.content,
+        )
+    }
+}
+
+impl fmt::Display for Pane {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rows_too_few = self.rows.saturating_sub(self.content.len());
+        let padding: Vec<String> = (0..rows_too_few).map(|_| "".to_string()).collect();
+        let nice = [self.name.clone()]
+            .iter()
+            .chain(self.content.iter())
+            .chain(padding.iter())
+            .map(|s| self.correct_length(s))
+            .join("\n");
+        write!(f, "{}", nice)
+    }
+}
+
+impl Pane {
+    pub fn new(width: usize, rows: usize, name: String) -> Self {
+        Self {
+            width,
+            rows,
+            name,
+            content: Vec::new(),
+        }
+    }
+    pub fn add_line(&mut self, message: String) {
+        self.content.push(message);
+    }
+
+    fn correct_length(&self, message: &str) -> String {
+        let tail = "...";
+        let truncated = truncate_str(message, self.width, tail).to_string();
+
+        let too_short_by = self.width.saturating_sub(measure_text_width(&truncated));
+        let long_enough = format!("{}{}", truncated, " ".repeat(too_short_by));
+
+        long_enough
+    }
+
+    fn clear(&mut self) {
+        self.content.clear();
+    }
+}
+
+pub struct MultiPane<'a> {
+    joiner: &'a str,
+    rows: usize,
+    panes: [Pane; 4],
+    pane_names: HashMap<String, usize>,
+}
+
+impl MultiPane<'_> {
+    pub fn new(panes: [(String, usize); 4], rows: usize) -> Self {
+        let names = panes
+            .iter()
+            .enumerate()
+            .map(|(i, (n, _))| (strip_ansi_codes(n).to_string(), i))
+            .collect();
+        let panes = panes.map(|(n, w)| Pane::new(w, rows, n));
+        Self {
+            joiner: " | ",
+            rows,
+            panes,
+            pane_names: names,
+        }
+    }
+
+    fn pane_join(&self, pane_string: [&String; 4]) -> String {
+        format!(
+            "{}{}{}\n",
+            self.joiner,
+            pane_string.iter().join(self.joiner),
+            self.joiner,
+        )
+    }
+
+    pub fn write_line_to_pane(&mut self, pane_name: &str, line: String) {
+        let index = self.pane_names.get(pane_name).unwrap_or_else(|| {
+            panic!(
+                "Display panel name not found: {}.\nOptions are: \n - {}",
+                pane_name,
+                self.pane_names.keys().join("\n - ")
+            )
+        });
+        let pane = self
+            .panes
+            .get_mut(*index)
+            .unwrap_or_else(|| panic!("Display panel index mapping not found: {pane_name}"));
+        pane.add_line(line);
+    }
+
+    pub fn clear(&mut self) {
+        let _: () = self.panes.iter_mut().map(|p| p.clear()).collect();
+    }
+}
+
+impl fmt::Display for MultiPane<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let pane_strings: [Vec<String>; 4] = self
+            .panes
+            .each_ref()
+            .map(|p| p.to_string().split("\n").map(|s| s.to_string()).collect());
+
+        let mut line_iter = String::new();
+        for row in 0..self.rows {
+            let shaslica = pane_strings
+                .each_ref()
+                .map(|content_vec| content_vec.get(row).unwrap());
+            line_iter += &self.pane_join(shaslica);
+        }
+
+        if let Some(line_length) = line_iter.find("\n") {
+            let table_cap = format!(
+                " {} \n",
+                "─".repeat(measure_text_width(&line_iter[0..line_length]) - 2)
+            );
+
+            write!(f, "{table_cap}{line_iter}{table_cap}")
+        } else {
+            write!(f, "content failed to render: no newlines in output")
+        }
+    }
+}
+
+pub struct ReplayTerminal<'a> {
+    multi_pane: MultiPane<'a>,
+    terminal: Term,
+}
+
+impl ReplayTerminal<'_> {
+    pub fn new(panes: [(String, usize); 4], rows: usize) -> Self {
+        Self {
+            multi_pane: MultiPane::new(panes, rows),
+            terminal: Term::stdout(),
+        }
+    }
+
+    pub fn flush(&mut self) {
+        let content = self.multi_pane.to_string();
+        let _ = self.terminal.clear_last_lines(self.multi_pane.rows + 100);
+        let _ = self.terminal.write_line(&content);
+        self.multi_pane.clear();
+    }
+
+    pub fn write_line_to_pane(&mut self, pane_name: &str, msg: String) {
+        self.multi_pane.write_line_to_pane(pane_name, msg);
+    }
+}

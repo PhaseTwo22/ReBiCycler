@@ -7,6 +7,7 @@ mod build_orders;
 mod errors;
 mod knowledge;
 pub mod protoss_bot;
+mod readout;
 mod siting;
 
 #[must_use]
