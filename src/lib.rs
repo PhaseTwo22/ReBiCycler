@@ -49,22 +49,22 @@ pub fn closest_point<T: Iterator<Item = Point2>>(target: Point2, population: T) 
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Tag {
-    tag: u64,
-    type_id: UnitTypeId,
+    pub tag: u64,
+    pub unit_type: UnitTypeId,
 }
 impl Tag {
     #[must_use]
     pub fn from_unit(unit: &Unit) -> Self {
         Self {
             tag: unit.tag(),
-            type_id: unit.type_id(),
+            unit_type: unit.type_id(),
         }
     }
     #[must_use]
     pub const fn default() -> Self {
         Self {
             tag: 0,
-            type_id: UnitTypeId::NotAUnit,
+            unit_type: UnitTypeId::NotAUnit,
         }
     }
 }

@@ -22,6 +22,7 @@ impl Debug for InvalidUnitError {
 pub enum BuildError {
     CantPlace(Point2, rust_sc2::ids::UnitTypeId),
     NoBuildingLocationHere(Point2),
+    NoBuildingLocationForFinishedBuilding,
     NoPlacementLocations,
     CantAfford,
     InvalidUnit(String),

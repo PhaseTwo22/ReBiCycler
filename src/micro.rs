@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use rust_sc2::prelude::*;
-
 use crate::{errors::MicroError, Tag};
+use rust_sc2::prelude::*;
+use std::fmt::Debug;
 
 const MINERAL_MINE_DISTANCE: f32 = 1.0;
 const GAS_MINE_DISTANCE: f32 = 2.5;
@@ -26,9 +26,21 @@ enum MinerAsset {
     Resource,
     Townhall,
 }
+
 struct MinerAssignment {
     resource: Unit,
     townhall: Unit,
+}
+
+impl Debug for MinerAssignment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "MiningAssignment {:?} at base near {:?}",
+            self.resource.type_id(),
+            self.townhall.position()
+        )
+    }
 }
 
 impl Default for MinerManager {
@@ -51,7 +63,8 @@ enum MinerMicroState {
 }
 #[derive(Debug)]
 pub enum MiningError {
-    NotHarvestable(u64),
+    NotHarvestable(Tag),
+    NotTownhall(Tag),
     NoTownhalls,
     NoResources,
 }
@@ -87,6 +100,19 @@ impl MinerManager {
                 }
             })
             .sum()
+    }
+
+    pub fn remove_miner(&mut self, miner: u64) -> bool {
+        if let Some(old_job) = self.miners.remove(&miner) {
+            self.resource_assignment_counts
+                .entry(old_job.0.resource.tag())
+                .and_modify(|count| {
+                    *count = count.saturating_sub(1);
+                });
+            true
+        } else {
+            false
+        }
     }
 
     fn remove_asset_assignments(&mut self, removed_asset: u64, asset_type: MinerAsset) -> Vec<u64> {
@@ -136,12 +162,9 @@ impl MinerManager {
         }
     }
 
-    fn find_job(&mut self) -> Result<Option<MinerAssignment>, MiningError> {
+    fn find_job(&self) -> Result<Option<MinerAssignment>, MiningError> {
         let minerals = self.assets.iter().filter(|u| u.is_mineral());
-        let gasses = self
-            .assets
-            .iter()
-            .filter(|u| !u.is_mineral() && u.ideal_harvesters().is_some());
+        let gasses = self.assets.iter().filter(|u| u.is_geyser());
         let find_order: Vec<&Unit> = {
             match self.priority {
                 ResourceType::Gas => gasses.chain(minerals).collect(),
@@ -156,7 +179,9 @@ impl MinerManager {
                 .get(&resource.tag())
                 .unwrap_or(&0usize);
             let employment = self.job_at_resource(resource, *count);
-            employment?;
+            if let Some(job) = employment? {
+                return Ok(Some(job));
+            }
         }
         Ok(None)
     }
@@ -195,11 +220,11 @@ impl MinerManager {
     }
 
     pub fn add_resource(&mut self, unit: Unit) -> Result<(), MiningError> {
-        if unit.ideal_harvesters().is_some() {
+        if unit.is_mineral() || unit.is_geyser() {
             self.assets.push(unit);
             Ok(())
         } else {
-            Err(MiningError::NotHarvestable(unit.tag()))
+            Err(MiningError::NotHarvestable(Tag::from_unit(&unit)))
         }
     }
 
@@ -208,7 +233,7 @@ impl MinerManager {
             self.assets.push(unit);
             Ok(())
         } else {
-            Err(MiningError::NotHarvestable(unit.tag()))
+            Err(MiningError::NotTownhall(Tag::from_unit(&unit)))
         }
     }
 

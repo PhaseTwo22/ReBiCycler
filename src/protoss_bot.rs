@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::HashMap;
 
 use crate::build_order_manager::BuildOrder;
@@ -36,32 +37,15 @@ impl Player for ReBiCycler {
 
         println!("Global siting complete: {:?}", self.siting_director);
 
-        let nearby_minerals: Vec<Unit> = self
-            .units
-            .resources
-            .iter()
-            .closer(10.0, self.start_center)
-            .filter(|u| u.is_mineral())
-            .cloned()
-            .collect();
-        for mineral in nearby_minerals {
-            if let Err(e) = self.mining_manager.add_resource(mineral) {
-                println!("Error adding initial minerals: {e:?}");
-            };
-        }
-
-        for worker in &self.units.my.workers.clone() {
-            if self.back_to_work(worker).is_err() {
-                println!("No bases at game start?!");
-            }
-        }
-
         println!("Game start!");
         self.game_started = true;
         Ok(())
     }
 
     fn on_step(&mut self, frame_no: usize) -> SC2Result<()> {
+        if frame_no == 0 {
+            self.first_frame();
+        }
         self.observe(frame_no);
         self.broadcast_alerts();
 
@@ -92,6 +76,7 @@ impl Player for ReBiCycler {
                     "Building Finished! {:?}, {building_tag}",
                     building.type_id()
                 );
+                self.siting_director.finish_construction(building);
 
                 if building.type_id() == UnitTypeId::Nexus {
                     if let Err(e) = self.new_base_finished(&building.clone()) {
@@ -134,7 +119,7 @@ impl Player for ReBiCycler {
                     );
                     let unit_tag = Tag {
                         tag: unit_tag,
-                        type_id: unit_details.type_id,
+                        unit_type: unit_details.type_id,
                     };
                     if crate::is_assimilator(unit_details.type_id) {
                         if let Err(none_found) = self.siting_director.lose_assimilator(unit_tag) {
@@ -168,6 +153,10 @@ impl Player for ReBiCycler {
                         for unit in unemployed {
                             self.back_to_work(&unit.clone());
                         }
+                    } else if unit_tag.unit_type == UnitTypeId::Probe
+                        && self.mining_manager.remove_miner(unit_tag.tag)
+                    {
+                        println!("Dead worker was mining");
                     }
                 }
             }
@@ -216,6 +205,28 @@ impl ReBiCycler {
             build_order: BuildOrder::empty(),
             game_started: false,
             ..Default::default()
+        }
+    }
+
+    fn first_frame(&mut self) {
+        let nearby_minerals: Vec<Unit> = self
+            .units
+            .resources
+            .iter()
+            .closer(10.0, self.start_center)
+            .filter(|u| u.is_mineral())
+            .cloned()
+            .collect();
+        for mineral in nearby_minerals {
+            if let Err(e) = self.mining_manager.add_resource(mineral) {
+                println!("Error adding initial minerals: {e:?}");
+            };
+        }
+
+        for worker in &self.units.my.workers.clone() {
+            if self.back_to_work(worker).is_err() {
+                println!("No bases at game start?!");
+            }
         }
     }
 

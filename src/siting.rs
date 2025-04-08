@@ -169,7 +169,7 @@ impl BuildingLocation {
             (T::DePower, state) => state.depower(),
             (T::RePower, state) => Ok(state.repower()),
             (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(tag.type_id) {
+                if self.status.can_build(tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
                     Err(TransitionError::InvalidTransition(format!(
@@ -186,7 +186,7 @@ impl BuildingLocation {
             (T::Finish, S::Constructing(tag, power)) => Ok(S::Built(tag, power)),
 
             (T::Destroy, S::Built(tag, power) | S::Constructing(tag, power)) => {
-                Ok(S::Free(Some(tag.type_id), power))
+                Ok(S::Free(Some(tag.unit_type), power))
             }
             (T::UnObstruct, S::Blocked(intent, power) | S::Free(intent, power)) => {
                 Ok(S::Free(intent, power))
@@ -400,12 +400,12 @@ impl SitingDirector {
     }
 
     pub fn construction_begin(&mut self, tag: Tag, location: Point2) -> Result<(), BuildError> {
-        if crate::is_protoss_building(tag.type_id) && !crate::is_assimilator(tag.type_id) {
+        if crate::is_protoss_building(tag.unit_type) && !crate::is_assimilator(tag.unit_type) {
             Ok(())
         } else {
             Err(BuildError::InvalidUnit(format!(
                 "{:?} at {:?}",
-                tag.type_id, location
+                tag.unit_type, location
             )))
         }?;
 
@@ -416,6 +416,15 @@ impl SitingDirector {
                     .map_err(|_| BuildError::NoBuildingLocationHere(location))
             },
         )
+    }
+
+    pub fn finish_construction(&mut self, structure: &Unit) -> Result<(), BuildError> {
+        if structure.is_geyser() {
+            let location = self
+                .gas_locations
+                .get_mut(structure.tag())
+                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?;
+        }
     }
 
     pub fn mark_position_blocked(&mut self, location: Point2) -> Result<(), BuildError> {
@@ -737,7 +746,9 @@ impl ReBiCycler {
     /// # Errors
     /// `UnitEmploymentError` if no base managers exist, or we have no townhalls.
     pub fn back_to_work(&mut self, worker: &Unit) -> Result<(), UnitEmploymentError> {
-        self.mining_manager.assign_miner(worker);
+        if let Err(e) = self.mining_manager.assign_miner(worker) {
+            println!("Can't employ worker: {e:?}");
+        }
         Ok(())
     }
 
