@@ -91,3 +91,29 @@ pub const fn is_protoss_building(unit: UnitTypeId) -> bool {
 pub const fn is_assimilator(unit: UnitTypeId) -> bool {
     matches!(unit, UnitTypeId::Assimilator | UnitTypeId::AssimilatorRich)
 }
+
+#[must_use]
+pub const fn is_protoss_production(unit: UnitTypeId) -> bool {
+    matches!(
+        unit,
+        UnitTypeId::Nexus
+            | UnitTypeId::Gateway
+            | UnitTypeId::WarpGate
+            | UnitTypeId::Stargate
+            | UnitTypaid::RoboticsBay
+    )
+}
+
+#[must_use]
+pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
+    matches!(
+        unit,
+            UnitTypeId::Forge
+            | UnitTypeId::FleetBeacon
+            | UnitTypeId::TwilightCouncil
+            | UnitTypeId::TemplarArchive
+            | UnitTypeId::DarkShrine
+            | UnitTypeId::RoboticsBay
+            | UnitTypeId::CyberneticsCore
+    )
+}
