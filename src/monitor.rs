@@ -4,7 +4,10 @@ fn monitor(&self) {
 }
 
 fn production_tab (&self) {
-
+let data = self.production_facilities();
+for ((unit, ability),(count,progress))in data.iter() {
+    let producing = if let Some(name) = ability {crate::ability_produces(ability)} else{""};
+}
 }
 
 fn idle_production_facilities(&self) {
@@ -12,13 +15,16 @@ let idle_structures = self.units.my.structures.idle().filter(|u|crate::is_protos
 count_unit_types(idle_structures)
 }
 
-fn busy_facilities(&self) {
-let count_and_max : HashMap<(UnitTypeId, AbilityId), (usize, f32)> = HashMap::new();
-let busy = self.units.my.structures.iter().filter_map(|u| if u.order().is_some() {Some((u.type_id(), u.order())} else {None});
+fn production_facilities(&self) {
+let count_and_max : HashMap<(UnitTypeId, Option(AbilityId)), (usize, f32)> = HashMap::new();
+for unit in  self.units.my.structures.iter().filter(|u|crate::is_protoss_production(u.type_id())){
+    let (key, progress) = if let Some((ability, _target, progress)) = unit.orders() {
+((unit.type_id(), ability), progress)
+})
+else ((unit.type_id(), None), 0.0)
+};
+    count_and_max.entry(key).and_modify(|(count, max)| (count + 1, if max > progress {max} else {progress}).or_insert((1,0.0));
 
-for (unit_type, (ability, _target, progress)) in busy {
-let (count, top_progress) = count_and_max.get((unit_type, ability)).unwrap_or(0,0.0);
-count_and_max.insert((unit_type,ability),(count + 1, f32::max(progress, top_progress)));
 }
 count_and_max
 }
