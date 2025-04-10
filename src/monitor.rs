@@ -16,12 +16,9 @@ for ((unit, ability),(count,progress))in data.iter() {
          if producing.is_empty() {producing}else {format!(": {progress}")});
     lines.push(out)
 }
-lines.sort()
-let active_building = lines[0].0;
-while !lines.is_empty {
-    let this_building = 
-}
-
+lines.sort();
+display_production(lines);
+add_lines_to_terminal_display
 }
 
 fn display_production(producing: Vec<(String,String,String,String)> -> Vec<String> {
@@ -34,13 +31,14 @@ while let Some((name, product,count,progress)) = producing.pop()
 {
     if name != active_structure {
          active_structure = name.clone();
-         out.push(name)
+         out.push(name);
     }
     let line = format!("{}{}[{}]{}",
          same_sep,
          product,
          count,
-         progress
+         progress);
+    out.push(line)
 }
 out
 }
