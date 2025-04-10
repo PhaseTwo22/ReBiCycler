@@ -43,12 +43,6 @@ while let Some((name, product,count,progress)) = producing.pop()
 out
 }
 
-
-fn idle_production_facilities(&self) {
-let idle_structures = self.units.my.structures.idle().filter(|u|crate::is_protoss_production(u.type_id());
-count_unit_types(idle_structures)
-}
-
 fn production_facilities(&self) {
 let count_and_max : HashMap<(UnitTypeId, Option(AbilityId)), (usize, f32)> = HashMap::new();
 for unit in  self.units.my.structures.iter().filter(|u|crate::is_protoss_production(u.type_id())){
@@ -69,6 +63,26 @@ let idle_structures = self.units.my.structures.idle().filter(|u|crate::is_protos
 count_unit_types(idle_structures)
 }
 
+
+fn display_research(&self) {
+let lines = Vec::new();
+for unit in self.units.my.structures.filter(crate::is_protoss_tech) {
+Ground: 
+🛡️🛡️🛡️⚔️⚔️⚔️
+Air: 
+🛡️🛡️  ⚔️⚔️
+Shield: 
+🔵
+
+🌀 👟 ⚙️ 💎
+🌩️ ​👁️ 🛸 🚀
+🧞 🥏 ♨️ ☢️
+
+In progress:
+👁️[56s left]  
+}
+
+}
 fn army_composition(&self) {
 let mut count:HashMap<UnitTypeId, usize>
 let _ : ()= self.units.my.units.iter().filter(|u| !u.is_worker()).map( |u| {
@@ -79,6 +93,17 @@ count
 }
 
 }
+
+fn display_construction(&self) {
+let out = Vec::new();
+
+for unit in self.units.my.structures.iter().filter(|u| u.build_progress() != 1.0){
+    format!("{}: {:.0}%"
+unit.type_id(),100.0*unit.build_progess()
+}
+
+}
+
 
 
 fn count_unit_types(units: Units) -> HashMap<UnitTypeId, usize> {
