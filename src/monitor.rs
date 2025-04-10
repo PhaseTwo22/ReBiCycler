@@ -5,10 +5,46 @@ fn monitor(&self) {
 
 fn production_tab (&self) {
 let data = self.production_facilities();
+let mut lines :Vec<(String,String,String,String)> = Vec::new();
 for ((unit, ability),(count,progress))in data.iter() {
-    let producing = if let Some(name) = ability {crate::ability_produces(ability)} else{""};
+    let structure_name = crate::building_names(unit);
+    let producing = if let Some(a) = ability {crate::ability_produces(a)} else{"".to_string()};
+    let out = (
+         structure_name,
+         producing,
+         count,
+         if producing.is_empty() {producing}else {format!(": {progress}")});
+    lines.push(out)
 }
+lines.sort()
+let active_building = lines[0].0;
+while !lines.is_empty {
+    let this_building = 
 }
+
+}
+
+fn display_production(producing: Vec<(String,String,String,String)> -> Vec<String> {
+    let out = Vec::new();
+    let same_sep = " - "
+    producing.sort()
+    let mut active_structure = "".to_string();
+
+while let Some((name, product,count,progress)) = producing.pop()
+{
+    if name != active_structure {
+         active_structure = name.clone();
+         out.push(name)
+    }
+    let line = format!("{}{}[{}]{}",
+         same_sep,
+         product,
+         count,
+         progress
+}
+out
+}
+
 
 fn idle_production_facilities(&self) {
 let idle_structures = self.units.my.structures.idle().filter(|u|crate::is_protoss_production(u.type_id());
