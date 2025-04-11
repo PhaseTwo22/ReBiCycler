@@ -26,19 +26,19 @@ impl fmt::Debug for Pane {
 impl fmt::Display for Pane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rows_too_few = self.rows.saturating_sub(self.content.len());
-        let padding: Vec<String> = (0..rows_too_few).map(|_| "".to_string()).collect();
+        let padding: Vec<String> = (0..rows_too_few).map(|_| String::new()).collect();
         let nice = [self.name.clone()]
             .iter()
             .chain(self.content.iter())
             .chain(padding.iter())
             .map(|s| self.correct_length(s))
             .join("\n");
-        write!(f, "{}", nice)
+        write!(f, "{nice}")
     }
 }
 
 impl Pane {
-    pub fn new(width: usize, rows: usize, name: String) -> Self {
+    pub const fn new(width: usize, rows: usize, name: String) -> Self {
         Self {
             width,
             rows,
@@ -113,7 +113,7 @@ impl MultiPane {
     }
 
     pub fn clear(&mut self) {
-        let _: () = self.panes.iter_mut().map(|p| p.clear()).collect();
+        let _: () = self.panes.iter_mut().map(Pane::clear).collect();
     }
 }
 
@@ -122,7 +122,7 @@ impl fmt::Display for MultiPane {
         let pane_strings: [Vec<String>; 4] = self
             .panes
             .each_ref()
-            .map(|p| p.to_string().split("\n").map(|s| s.to_string()).collect());
+            .map(|p| p.to_string().split('\n').map(std::string::ToString::to_string).collect());
 
         let mut line_iter = String::new();
         for row in 0..self.rows {
@@ -132,7 +132,7 @@ impl fmt::Display for MultiPane {
             line_iter += &self.pane_join(shaslica);
         }
 
-        if let Some(line_length) = line_iter.find("\n") {
+        if let Some(line_length) = line_iter.find('\n') {
             let table_cap = format!(
                 " {} \n",
                 "─".repeat(measure_text_width(&line_iter[0..line_length]) - 2)

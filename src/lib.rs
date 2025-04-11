@@ -142,7 +142,7 @@ fn building_names(unit: &UnitTypeId) -> String {
     .to_string()
 }
 
-fn ability_produces(ability: &AbilityId) -> UnitTypeId {
+const fn ability_produces(ability: &AbilityId) -> UnitTypeId {
     match ability {
         AbilityId::TrainAdept => UnitTypeId::Adept,
         AbilityId::GatewayTrainZealot => UnitTypeId::Zealot,

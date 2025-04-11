@@ -1,31 +1,32 @@
 use crate::protoss_bot::ReBiCycler;
+use rust_sc2::ids::UpgradeId;
 use rust_sc2::{ids::AbilityId, prelude::UnitTypeId, units::Units};
 use std::collections::HashMap;
 use std::hash::Hash;
 impl ReBiCycler {
-    fn monitor(&self) {}
+    const fn monitor(&self) {}
 
     fn production_tab(&mut self) {
         let data = self.production_facilities();
         let mut lines: Vec<(String, String, String, String)> = Vec::new();
-        for ((unit, ability), (count, progress)) in data.iter() {
+        for ((unit, ability), (count, progress)) in &data {
             let structure_name = crate::building_names(unit);
             let producing = if let Some(a) = ability {
                 format!("{:?}", crate::ability_produces(a))
             } else {
-                "".to_string()
+                String::new()
             };
             let out = (
                 structure_name,
                 producing,
                 count.to_string(),
                 if ability.is_none() {
-                    "".to_string()
+                    String::new()
                 } else {
                     format!(": {progress}")
                 },
             );
-            lines.push(out)
+            lines.push(out);
         }
         lines.sort();
         let formatted = self.display_production(&mut lines);
@@ -41,15 +42,15 @@ impl ReBiCycler {
         let mut out = Vec::new();
         let same_sep = " - ";
         producing.sort();
-        let mut active_structure = "".to_string();
+        let mut active_structure = String::new();
 
         while let Some((name, product, count, progress)) = producing.pop() {
             if name != active_structure {
                 active_structure = name.clone();
                 out.push(name);
             }
-            let line = format!("{}{}[{}]{}", same_sep, product, count, progress);
-            out.push(line)
+            let line = format!("{same_sep}{product}[{count}]{progress}");
+            out.push(line);
         }
         out
     }
@@ -95,7 +96,32 @@ impl ReBiCycler {
         Self::count_unit_types(idle_structures)
     }
 
-    fn display_research(&self) {
+    fn display_protoss_research(&self) {
+        [
+            UpgradeId::ProtossGroundWeaponsLevel1,
+            UpgradeId::ProtossGroundWeaponsLevel2,
+            UpgradeId::ProtossGroundWeaponsLevel3,
+        ];
+        [
+            UpgradeId::ProtossGroundArmorsLevel1,
+            UpgradeId::ProtossGroundArmorsLevel2,
+            UpgradeId::ProtossGroundArmorsLevel3,
+        ];
+        [
+            UpgradeId::ProtossAirWeaponsLevel1,
+            UpgradeId::ProtossAirWeaponsLevel2,
+            UpgradeId::ProtossAirWeaponsLevel3,
+        ];
+        [
+            UpgradeId::ProtossAirArmorsLevel1,
+            UpgradeId::ProtossAirArmorsLevel2,
+            UpgradeId::ProtossAirArmorsLevel3,
+        ];
+        [
+            UpgradeId::ProtossShieldsLevel1,
+            UpgradeId::ProtossShieldsLevel2,
+            UpgradeId::ProtossShieldsLevel3,
+        ];
         let lines: Vec<String> = Vec::new();
         for unit in self
             .units
@@ -104,31 +130,24 @@ impl ReBiCycler {
             .filter(|u| crate::is_protoss_tech(u.type_id()))
         {
             // Ground:
-            // 🛡️🛡️🛡️⚔️⚔️⚔️
+            // 🛡️🛡️🛡️🔪🔪🔪
             // Air:
-            // 🛡️🛡️  ⚔️⚔️
+            // 🛡️🛡️  🔪🔪
             // Shield:
             // 🔵
 
-            // 🌀 👟 ⚙️ 💎
-            // 🌩️ ​👁️ 🛸 🚀
-            // 🧞 🥏 ♨️ ☢️
+            // 🌀 👟 💠 💎
+            // 🌩️ ​👁️ 🔆 🚀
+            // 🧞 🥏 🌡️ 💥
 
             // In progress:
             // 👁️[56s left]
         }
     }
     fn army_composition(&self) -> HashMap<UnitTypeId, usize> {
-        let mut count: HashMap<UnitTypeId, usize> = HashMap::new();
-        let _: () = self
-            .units
-            .my
-            .units
-            .iter()
-            .filter(|u| !u.is_worker())
-            .map(|u| increment_map(&mut count, u.type_id()))
-            .collect();
-        count
+        let army = self.units.my.units.filter(|u| !u.is_worker());
+
+        Self::count_unit_types(army)
     }
 
     fn display_construction(&mut self) {
@@ -145,7 +164,7 @@ impl ReBiCycler {
                 "{:?}: {:.0}%",
                 unit.type_id(),
                 100.0 * unit.build_progress()
-            ))
+            ));
         }
         for line in out {
             self.display_terminal
@@ -162,6 +181,7 @@ impl ReBiCycler {
         counts
     }
 }
+
 fn increment_map<T>(map: &mut HashMap<T, usize>, key: T)
 where
     T: Hash + Eq,
