@@ -103,6 +103,74 @@ impl GasLocation {
             _ => false,
         }
     }
+
+    pub fn transition(&mut self, transition: BuildingTransition) -> Result<(), TransitionError> {
+        use BuildingStatus as S;
+        use BuildingTransition as T;
+        let new_status = match (transition, self.status.clone()) {
+            (T::DePower, state) => state.depower(),
+            (T::RePower, state) => Ok(state.repower()),
+            (T::Construct(tag), S::Free(_, power)) => {
+                if self.status.can_build(tag.unit_type) {
+                    Ok(S::Constructing(tag, power))
+                } else {
+                    Err(TransitionError::InvalidTransition(format!(
+                        "{:?}: {:?}",
+                        transition,
+                        self.status.clone()
+                    )))
+                }
+            }
+            (T::Obstruct, S::Free(intent, power) | S::Blocked(intent, power)) => {
+                Ok(S::Blocked(intent, power))
+            }
+
+            (T::Finish, S::Constructing(tag, power)) => Ok(S::Built(tag, power)),
+
+            (T::Destroy, S::Built(tag, power) | S::Constructing(tag, power)) => {
+                Ok(S::Free(Some(tag.unit_type), power))
+            }
+            (T::UnObstruct, S::Blocked(intent, power) | S::Free(intent, power)) => {
+                Ok(S::Free(intent, power))
+            }
+
+            (T::UnObstruct, _) => Err(TransitionError::InvalidTransition(format!(
+                "{:?}: {:?}",
+                transition,
+                self.status.clone()
+            ))),
+
+            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError::InvalidTransition(
+                format!("{:?}: {:?}", transition, self.status.clone()),
+            )),
+
+            (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => {
+                Err(TransitionError::InvalidTransition(format!(
+                    "{:?}: {:?}",
+                    transition,
+                    self.status.clone()
+                )))
+            }
+
+            (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => {
+                Err(TransitionError::InvalidTransition(format!(
+                    "{:?}: {:?}",
+                    transition,
+                    self.status.clone()
+                )))
+            }
+
+            (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+                Err(TransitionError::InvalidTransition(format!(
+                    "{:?}: {:?}",
+                    transition,
+                    self.status.clone()
+                )))
+            }
+        }?;
+        self.status = new_status;
+        Ok(())
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]
@@ -424,6 +492,15 @@ impl SitingDirector {
                 .gas_locations
                 .get_mut(structure.tag())
                 .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?;
+        } else {
+            if let Err(transition_result) = self
+                .building_locations
+                .get_mut(structure.tag())
+                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?
+                .transition(BuildingTransition::Finish)
+            {
+                BuildError::NoBuildingLocationHere(structure.position())
+            }
         }
     }
 
