@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use crate::base_manager::BaseManager;
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
+use crate::readout::DisplayTerminal;
 use crate::siting::SitingDirector;
 use crate::Tag;
 
@@ -16,6 +15,7 @@ pub struct ReBiCycler {
     pub base_managers: Vec<BaseManager>,
     pub siting_director: SitingDirector,
     pub knowledge: Knowledge,
+    pub display_terminal: DisplayTerminal,
     game_started: bool,
 }
 impl Player for ReBiCycler {
@@ -58,7 +58,6 @@ impl Player for ReBiCycler {
                 "Step step step {}, M:{}, G:{}, S:{}/{}",
                 frame_no, self.minerals, self.vespene, self.supply_used, self.supply_cap
             );
-            self.count_unit_types();
         };
 
         Ok(())
@@ -161,58 +160,5 @@ impl Player for ReBiCycler {
 
     fn on_end(&self, _result: GameResult) -> SC2Result<()> {
         Ok(())
-    }
-}
-
-impl ReBiCycler {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            /* initializing fields */
-            build_order: BuildOrder::empty(),
-            game_started: false,
-            ..Default::default()
-        }
-    }
-
-    fn count_unit_types(&self) {
-        let mut counts: HashMap<UnitTypeId, usize> = HashMap::new();
-        let _: () = self
-            .units
-            .my
-            .all
-            .iter()
-            .map(|u| {
-                if let Some(so_far) = counts.get(&u.type_id()) {
-                    counts.insert(u.type_id(), so_far + 1)
-                } else {
-                    counts.insert(u.type_id(), 1)
-                };
-            })
-            .collect();
-        println!("Unit counts: {counts:?}");
-        let mut idle_counts: HashMap<UnitTypeId, usize> = HashMap::new();
-        let _: () = self
-            .units
-            .my
-            .structures
-            .of_types(&vec![
-                UnitTypeId::Nexus,
-                UnitTypeId::WarpGate,
-                UnitTypeId::Gateway,
-                UnitTypeId::Stargate,
-                UnitTypeId::RoboticsFacility,
-            ])
-            .idle()
-            .iter()
-            .map(|u| {
-                if let Some(so_far) = idle_counts.get(&u.type_id()) {
-                    idle_counts.insert(u.type_id(), so_far + 1)
-                } else {
-                    idle_counts.insert(u.type_id(), 1)
-                };
-            })
-            .collect();
-        println!("Idle facility counts: {idle_counts:?}");
     }
 }

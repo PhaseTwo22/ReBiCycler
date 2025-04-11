@@ -6,10 +6,10 @@ mod build_order_manager;
 mod build_orders;
 mod errors;
 mod knowledge;
+mod monitor;
 pub mod protoss_bot;
 mod readout;
 mod siting;
-
 #[must_use]
 pub fn get_options<'a>() -> LaunchOptions<'a> {
     LaunchOptions::<'a> {
@@ -100,7 +100,7 @@ pub const fn is_protoss_production(unit: UnitTypeId) -> bool {
             | UnitTypeId::Gateway
             | UnitTypeId::WarpGate
             | UnitTypeId::Stargate
-            | UnitTypaid::RoboticsBay
+            | UnitTypeId::RoboticsBay
     )
 }
 
@@ -108,7 +108,7 @@ pub const fn is_protoss_production(unit: UnitTypeId) -> bool {
 pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
     matches!(
         unit,
-            UnitTypeId::Forge
+        UnitTypeId::Forge
             | UnitTypeId::FleetBeacon
             | UnitTypeId::TwilightCouncil
             | UnitTypeId::TemplarArchive
@@ -116,4 +116,50 @@ pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
             | UnitTypeId::RoboticsBay
             | UnitTypeId::CyberneticsCore
     )
+}
+
+fn building_names(unit: &UnitTypeId) -> String {
+    match unit {
+        UnitTypeId::Nexus => "Nexus",
+        UnitTypeId::Assimilator => "Assimilator",
+        UnitTypeId::AssimilatorRich => "AssimilatorRich",
+        UnitTypeId::Pylon => "Pylon",
+        UnitTypeId::Gateway => "Gateway",
+        UnitTypeId::WarpGate => "WarpGate",
+        UnitTypeId::Forge => "Forge",
+        UnitTypeId::FleetBeacon => "FleetBeacon",
+        UnitTypeId::TwilightCouncil => "TwilightCouncil",
+        UnitTypeId::PhotonCannon => "PhotonCannon",
+        UnitTypeId::Stargate => "Stargate",
+        UnitTypeId::TemplarArchive => "TemplarArchive",
+        UnitTypeId::DarkShrine => "DarkShrine",
+        UnitTypeId::RoboticsBay => "RoboticsBay",
+        UnitTypeId::RoboticsFacility => "RoboticsFacility",
+        UnitTypeId::CyberneticsCore => "CyberneticsCore",
+        UnitTypeId::ShieldBattery => "ShieldBattery",
+        _ => "not implemented",
+    }
+    .to_string()
+}
+
+fn ability_produces(ability: &AbilityId) -> UnitTypeId {
+    match ability {
+        AbilityId::TrainAdept => UnitTypeId::Adept,
+        AbilityId::GatewayTrainZealot => UnitTypeId::Zealot,
+        AbilityId::GatewayTrainSentry => UnitTypeId::Sentry,
+        AbilityId::GatewayTrainStalker => UnitTypeId::Stalker,
+        AbilityId::GatewayTrainDarkTemplar => UnitTypeId::DarkTemplar,
+        AbilityId::GatewayTrainHighTemplar => UnitTypeId::HighTemplar,
+        AbilityId::TrainDisruptor => UnitTypeId::Disruptor,
+        AbilityId::RoboticsFacilityTrainColossus => UnitTypeId::Colossus,
+        AbilityId::RoboticsFacilityTrainWarpPrism => UnitTypeId::WarpPrism,
+        AbilityId::RoboticsFacilityTrainObserver => UnitTypeId::Observer,
+        AbilityId::RoboticsFacilityTrainImmortal => UnitTypeId::Immortal,
+        AbilityId::StargateTrainTempest => UnitTypeId::Tempest,
+        AbilityId::StargateTrainOracle => UnitTypeId::Oracle,
+        AbilityId::StargateTrainVoidRay => UnitTypeId::VoidRay,
+        AbilityId::StargateTrainPhoenix => UnitTypeId::Phoenix,
+        AbilityId::StargateTrainCarrier => UnitTypeId::Carrier,
+        _ => UnitTypeId::NotAUnit,
+    }
 }

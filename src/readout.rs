@@ -65,14 +65,14 @@ impl Pane {
     }
 }
 
-pub struct MultiPane<'a> {
-    joiner: &'a str,
+pub struct MultiPane {
+    joiner: String,
     rows: usize,
     panes: [Pane; 4],
     pane_names: HashMap<String, usize>,
 }
 
-impl MultiPane<'_> {
+impl MultiPane {
     pub fn new(panes: [(String, usize); 4], rows: usize) -> Self {
         let names = panes
             .iter()
@@ -81,7 +81,7 @@ impl MultiPane<'_> {
             .collect();
         let panes = panes.map(|(n, w)| Pane::new(w, rows, n));
         Self {
-            joiner: " | ",
+            joiner: " | ".to_string(),
             rows,
             panes,
             pane_names: names,
@@ -92,7 +92,7 @@ impl MultiPane<'_> {
         format!(
             "{}{}{}\n",
             self.joiner,
-            pane_string.iter().join(self.joiner),
+            pane_string.iter().join(&self.joiner),
             self.joiner,
         )
     }
@@ -117,7 +117,7 @@ impl MultiPane<'_> {
     }
 }
 
-impl fmt::Display for MultiPane<'_> {
+impl fmt::Display for MultiPane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pane_strings: [Vec<String>; 4] = self
             .panes
@@ -145,12 +145,29 @@ impl fmt::Display for MultiPane<'_> {
     }
 }
 
-pub struct ReplayTerminal<'a> {
-    multi_pane: MultiPane<'a>,
+pub struct DisplayTerminal {
+    multi_pane: MultiPane,
     terminal: Term,
 }
 
-impl ReplayTerminal<'_> {
+impl Default for DisplayTerminal {
+    fn default() -> Self {
+        Self {
+            multi_pane: MultiPane::new(
+                [
+                    ("Production".to_owned(), 20),
+                    ("Construction".to_owned(), 20),
+                    ("Research".to_owned(), 20),
+                    ("Army".to_owned(), 20),
+                ],
+                25,
+            ),
+            terminal: Term::stdout(),
+        }
+    }
+}
+
+impl DisplayTerminal {
     pub fn new(panes: [(String, usize); 4], rows: usize) -> Self {
         Self {
             multi_pane: MultiPane::new(panes, rows),
