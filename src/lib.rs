@@ -6,10 +6,16 @@ mod build_order_manager;
 mod build_orders;
 mod errors;
 mod knowledge;
+mod micro;
 mod monitor;
 pub mod protoss_bot;
+
 mod readout;
 mod siting;
+
+pub const PYLON_POWER_RADIUS: f32 = 6.5;
+pub const PRISM_POWER_RADIUS: f32 = 3.75;
+
 #[must_use]
 pub fn get_options<'a>() -> LaunchOptions<'a> {
     LaunchOptions::<'a> {
@@ -45,22 +51,22 @@ pub fn closest_point<T: Iterator<Item = Point2>>(target: Point2, population: T) 
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Tag {
-    tag: u64,
-    type_id: UnitTypeId,
+    pub tag: u64,
+    pub unit_type: UnitTypeId,
 }
 impl Tag {
     #[must_use]
     pub fn from_unit(unit: &Unit) -> Self {
         Self {
             tag: unit.tag(),
-            type_id: unit.type_id(),
+            unit_type: unit.type_id(),
         }
     }
     #[must_use]
     pub const fn default() -> Self {
         Self {
             tag: 0,
-            type_id: UnitTypeId::NotAUnit,
+            unit_type: UnitTypeId::NotAUnit,
         }
     }
 }
@@ -90,6 +96,29 @@ pub const fn is_protoss_building(unit: UnitTypeId) -> bool {
 #[must_use]
 pub const fn is_assimilator(unit: UnitTypeId) -> bool {
     matches!(unit, UnitTypeId::Assimilator | UnitTypeId::AssimilatorRich)
+}
+
+#[must_use]
+pub const fn is_minerals(unit: UnitTypeId) -> bool {
+    use UnitTypeId as U;
+    matches!(
+        unit,
+        U::MineralField
+            | U::MineralField750
+            | U::MineralField450
+            | U::LabMineralField
+            | U::LabMineralField750
+            | U::RichMineralField
+            | U::RichMineralField750
+            | U::MineralFieldOpaque
+            | U::MineralFieldOpaque900
+            | U::PurifierMineralField
+            | U::PurifierMineralField750
+            | U::PurifierRichMineralField
+            | U::PurifierRichMineralField750
+            | U::BattleStationMineralField
+            | U::BattleStationMineralField750
+    )
 }
 
 #[must_use]

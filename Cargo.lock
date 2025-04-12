@@ -574,6 +574,7 @@ dependencies = [
  "console",
  "itertools 0.14.0",
  "rust-sc2",
+ "slotmap",
 ]
 
 [[package]]
@@ -704,6 +705,15 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "slotmap"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbff4acf519f630b3a3ddcfaea6c06b42174d9a44bc70c620e9ed1649d58b82a"
+dependencies = [
+ "version_check",
 ]
 
 [[package]]
