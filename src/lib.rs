@@ -147,7 +147,7 @@ pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
     )
 }
 
-fn building_names(unit: &UnitTypeId) -> String {
+fn building_names(unit: UnitTypeId) -> String {
     match unit {
         UnitTypeId::Nexus => "Nexus",
         UnitTypeId::Assimilator => "Assimilator",
@@ -171,7 +171,7 @@ fn building_names(unit: &UnitTypeId) -> String {
     .to_string()
 }
 
-const fn ability_produces(ability: &AbilityId) -> UnitTypeId {
+const fn ability_produces(ability: AbilityId) -> UnitTypeId {
     match ability {
         AbilityId::TrainAdept => UnitTypeId::Adept,
         AbilityId::GatewayTrainZealot => UnitTypeId::Zealot,

@@ -24,7 +24,7 @@ const TECTONIC_ICON: &str = "💥";
 const NOT_RESEARCHED: &str = "  ";
 
 impl ReBiCycler {
-    pub fn monitor(&mut self, frame_no: usize) {
+    pub fn monitor(&mut self, _frame_no: usize) {
         self.display_construction();
 
         self.display_protoss_research();
@@ -41,12 +41,10 @@ impl ReBiCycler {
         let data = self.production_facilities();
         let mut lines: Vec<(String, String, String, String)> = Vec::new();
         for ((unit, ability), (count, progress)) in &data {
-            let structure_name = crate::building_names(unit);
-            let producing = if let Some(a) = ability {
-                format!("{:?}", crate::ability_produces(a))
-            } else {
-                String::new()
-            };
+            let structure_name = crate::building_names(*unit);
+            let producing = ability.as_ref().map_or_else(String::new, |a| {
+                format!("{:?}", crate::ability_produces(*a))
+            });
             let out = (
                 structure_name,
                 producing,
@@ -60,7 +58,7 @@ impl ReBiCycler {
             lines.push(out);
         }
         lines.sort();
-        let formatted = self.display_production(&mut lines);
+        let formatted = Self::format_production(&mut lines);
         for line in formatted {
             self.display_terminal.write_line_to_pane("Production", line);
         }
@@ -78,7 +76,7 @@ impl ReBiCycler {
             let out = format!(
                 "{:?}:{:?}",
                 chronoed_unit.type_id(),
-                crate::ability_produces(&ability)
+                crate::ability_produces(ability)
             );
             chronos.push(out);
         }
@@ -90,10 +88,7 @@ impl ReBiCycler {
         }
     }
 
-    fn display_production(
-        &mut self,
-        producing: &mut Vec<(String, String, String, String)>,
-    ) -> Vec<String> {
+    fn format_production(producing: &mut Vec<(String, String, String, String)>) -> Vec<String> {
         let mut out = Vec::new();
         let same_sep = " - ";
         producing.sort();
@@ -101,7 +96,7 @@ impl ReBiCycler {
 
         while let Some((name, product, count, progress)) = producing.pop() {
             if name != active_structure {
-                active_structure = name.clone();
+                active_structure.clone_from(&name);
                 out.push(name);
             }
             let line = format!("{same_sep}{product}[{count}]{progress}");
@@ -142,6 +137,32 @@ impl ReBiCycler {
     }
 
     fn display_protoss_research(&mut self) {
+        let mut lines = Vec::new();
+        let mut standard_upgrades = self.get_protoss_standard_upgrades();
+
+        let mut ability_upgrades = self.get_protoss_ability_upgrades();
+
+        lines.append(&mut standard_upgrades);
+        lines.append(&mut ability_upgrades);
+
+        for (ability, _target, progress) in self
+            .units
+            .my
+            .structures
+            .filter(|u| crate::is_protoss_tech(u.type_id()))
+            .iter()
+            .filter_map(rust_sc2::prelude::Unit::order)
+        {
+            let out = format!("- {:?}:{:.2}%", ability, progress * 100.0);
+            lines.push(out);
+        }
+
+        for line in lines {
+            self.display_terminal.write_line_to_pane("Research", line);
+        }
+    }
+
+    fn get_protoss_standard_upgrades(&self) -> Vec<String> {
         let ground_weapons = [
             UpgradeId::ProtossGroundWeaponsLevel1,
             UpgradeId::ProtossGroundWeaponsLevel2,
@@ -194,13 +215,15 @@ impl ReBiCycler {
         .map(|u| if self.has_upgrade(u) { SHIELD_ICON } else { "" })
         .join("");
 
-        let mut lines: Vec<String> = vec![
+        vec![
             format!("Ground: {ground_armor}{ground_weapons}"),
             format!("Air: {air_armor}{air_weapons}"),
             format!("Shields: {shields}"),
-        ];
+        ]
+    }
 
-        let mut ability_upgrades: Vec<String> = vec![
+    fn get_protoss_ability_upgrades(&self) -> Vec<String> {
+        vec![
             [
                 (UpgradeId::WarpGateResearch, WARPGATE_ICON),
                 (UpgradeId::PsiStormTech, STORM_ICON),
@@ -234,38 +257,20 @@ impl ReBiCycler {
                 })
                 .join(" ")
         })
-        .collect();
-
-        lines.append(&mut ability_upgrades);
-
-        for (ability, _target, progress) in self
-            .units
-            .my
-            .structures
-            .filter(|u| crate::is_protoss_tech(u.type_id()))
-            .iter()
-            .filter_map(rust_sc2::prelude::Unit::order)
-        {
-            let out = format!("- {:?}:{:.2}%", ability, progress * 100.0);
-            lines.push(out);
-        }
-
-        for line in lines {
-            self.display_terminal.write_line_to_pane("Research", line);
-        }
+        .collect()
     }
+
+    #[allow(clippy::cast_possible_truncation)]
     fn army_composition(&mut self) {
         let army = self.units.my.units.filter(|u| !u.is_worker());
 
-        let existing_workers = self.supply_workers.saturating_sub(
-            (self.counter().ordered().count(UnitTypeId::Probe))
-                .try_into()
-                .unwrap(),
-        );
+        let existing_workers = self
+            .supply_workers
+            .saturating_sub(self.counter().ordered().count(UnitTypeId::Probe) as u32);
         let msg = format!("Workers: {existing_workers}");
         self.display_terminal.write_line_to_pane("Army", msg);
 
-        for (unit, count) in Self::count_unit_types(army) {
+        for (unit, count) in Self::count_unit_types(&army) {
             let out = format!("- {unit:?}: {count}");
             self.display_terminal.write_line_to_pane("Army", out);
         }
@@ -279,7 +284,7 @@ impl ReBiCycler {
             .my
             .structures
             .iter()
-            .filter(|u| u.build_progress() != 1.0)
+            .filter(|u| u.build_progress() != 1.0_f32)
         {
             out.push(format!(
                 "{:?}: {:.0}%",
@@ -293,7 +298,7 @@ impl ReBiCycler {
         }
     }
 
-    fn count_unit_types(units: Units) -> HashMap<UnitTypeId, usize> {
+    fn count_unit_types(units: &Units) -> HashMap<UnitTypeId, usize> {
         let mut counts: HashMap<UnitTypeId, usize> = HashMap::new();
         let _: () = units
             .iter()

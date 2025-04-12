@@ -134,33 +134,11 @@ impl GasLocation {
                 Ok(S::Free(intent, power))
             }
 
-            (T::UnObstruct, _) => Err(TransitionError::InvalidTransition(format!(
-                "{:?}: {:?}",
-                transition,
-                self.status.clone()
-            ))),
-
-            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError::InvalidTransition(
-                format!("{:?}: {:?}", transition, self.status.clone()),
-            )),
-
-            (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => {
-                Err(TransitionError::InvalidTransition(format!(
-                    "{:?}: {:?}",
-                    transition,
-                    self.status.clone()
-                )))
-            }
-
-            (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => {
-                Err(TransitionError::InvalidTransition(format!(
-                    "{:?}: {:?}",
-                    transition,
-                    self.status.clone()
-                )))
-            }
-
-            (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+            (T::UnObstruct, _)
+            | (T::Finish | T::Destroy, S::Free(_, _))
+            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
+            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
+            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
                 Err(TransitionError::InvalidTransition(format!(
                     "{:?}: {:?}",
                     transition,
@@ -260,33 +238,11 @@ impl BuildingLocation {
                 Ok(S::Free(intent, power))
             }
 
-            (T::UnObstruct, _) => Err(TransitionError::InvalidTransition(format!(
-                "{:?}: {:?}",
-                transition,
-                self.status.clone()
-            ))),
-
-            (T::Finish | T::Destroy, S::Free(_, _)) => Err(TransitionError::InvalidTransition(
-                format!("{:?}: {:?}", transition, self.status.clone()),
-            )),
-
-            (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) => {
-                Err(TransitionError::InvalidTransition(format!(
-                    "{:?}: {:?}",
-                    transition,
-                    self.status.clone()
-                )))
-            }
-
-            (T::Obstruct | T::Construct(_), S::Constructing(_, _)) => {
-                Err(TransitionError::InvalidTransition(format!(
-                    "{:?}: {:?}",
-                    transition,
-                    self.status.clone()
-                )))
-            }
-
-            (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+            (T::UnObstruct, _)
+            | (T::Finish | T::Destroy, S::Free(_, _))
+            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
+            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
+            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
                 Err(TransitionError::InvalidTransition(format!(
                     "{:?}: {:?}",
                     transition,
@@ -429,10 +385,10 @@ impl SitingDirector {
             .collect();
 
         let _: () = geysers
-            .iter()
+            .into_iter()
             .map(|u| {
                 self.gas_locations
-                    .insert(u.tag(), GasLocation::from_unit(u));
+                    .insert(u.tag(), GasLocation::from_unit(&u));
             })
             .collect();
     }
@@ -492,13 +448,13 @@ impl SitingDirector {
                 .get_mut(&structure.tag())
                 .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?
                 .transition(BuildingTransition::Finish)
-                .map_err(|e| BuildError::CantTransitionBuildingLocation(e))
+                .map_err(BuildError::CantTransitionBuildingLocation)
         } else {
             self.building_locations
                 .get_mut(&structure.position())
                 .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?
                 .transition(BuildingTransition::Finish)
-                .map_err(|e| BuildError::CantTransitionBuildingLocation(e))
+                .map_err(BuildError::CantTransitionBuildingLocation)
         }
     }
 

@@ -192,7 +192,7 @@ impl MinerManager {
         count: usize,
     ) -> Result<Option<MinerAssignment>, MiningError> {
         let job = {
-            let harvesters = if resource.is_mineral() { 2 } else { 3 };
+            let harvesters: u32 = if resource.is_mineral() { 2 } else { 3 };
             if count <= harvesters as usize {
                 let nearest_townhall = self
                     .assets
@@ -289,6 +289,7 @@ fn worker_micro(unit: &Unit, state: &MinerMicroState, assignment: &MinerAssignme
     }
 }
 
+#[allow(clippy::match_same_arms)]
 fn worker_update(
     unit: &Unit,
     state: MinerMicroState,

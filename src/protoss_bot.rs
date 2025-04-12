@@ -1,6 +1,3 @@
-use std::any::Any;
-use std::collections::HashMap;
-
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
 use crate::knowledge::Knowledge;
@@ -123,7 +120,7 @@ impl Player for ReBiCycler {
                         unit_type: unit_details.type_id,
                     };
                     if crate::is_assimilator(unit_details.type_id) {
-                        if let Err(none_found) = self.siting_director.lose_assimilator(unit_tag) {
+                        if self.siting_director.lose_assimilator(unit_tag).is_err() {
                             println!("We couldn't find the assimilator to destroy");
                         }
                     } else if crate::is_protoss_building(unit_details.type_id) {

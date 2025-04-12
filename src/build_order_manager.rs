@@ -210,6 +210,9 @@ impl ReBiCycler {
         Err(BuildError::NoPlacementLocations)
     }
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
     fn warp_spot_spiral_search(
         &self,
         matrix: &PsionicMatrix,
@@ -218,7 +221,7 @@ impl ReBiCycler {
         unit_width: f32,
     ) -> Result<(), BuildError> {
         let possible_rings = (matrix.radius / unit_width).floor();
-        for ring_number in 1..possible_rings as usize {
+        for ring_number in 1..possible_rings as u64 {
             let circumference = TAU * matrix.radius * (ring_number as f32 / possible_rings);
             let possible_angles = (circumference / unit_width).floor();
             for angle_step in 0..possible_angles as usize {
