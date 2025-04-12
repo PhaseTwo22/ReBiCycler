@@ -45,3 +45,5 @@ pub enum TransitionError {
 pub enum MicroError {
     UnitNotRegistered(Tag),
 }
+
+pub type UnhandledError = String;

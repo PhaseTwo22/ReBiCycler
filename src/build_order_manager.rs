@@ -124,7 +124,6 @@ impl ReBiCycler {
     }
 
     fn attempt_build_action(&mut self, action: BuildOrderAction) {
-        //println!("Attempting a policy! {action:?}");
         let result = match action {
             BuildOrderAction::Expand => {
                 self.update_building_obstructions();
@@ -154,6 +153,11 @@ impl ReBiCycler {
         } else {
             println!("BuildOrderAction OK: {action:?}");
         }
+    }
+
+    fn unhandle_build(&mut self, be: BuildError) {
+        let message = format!("Build error not yet handled: {be:?}");
+        self.display_terminal.write_line_to_pane("Errors", message);
     }
 
     fn train(&self, unit_type: UnitTypeId, ability: AbilityId) -> Result<(), BuildError> {

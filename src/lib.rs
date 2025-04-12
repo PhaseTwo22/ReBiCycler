@@ -1,9 +1,9 @@
 use rust_sc2::prelude::*;
 use std::fmt::Debug;
-
 mod base_manager;
 mod build_order_manager;
 mod build_orders;
+mod construction;
 mod errors;
 mod knowledge;
 mod micro;

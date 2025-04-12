@@ -69,12 +69,12 @@ impl Pane {
 pub struct MultiPane {
     joiner: String,
     rows: usize,
-    panes: [Pane; 4],
+    panes: [Pane; 6],
     pane_names: HashMap<String, usize>,
 }
 
 impl MultiPane {
-    pub fn new(panes: [(String, usize); 4], rows: usize) -> Self {
+    pub fn new(panes: [(String, usize); 6], rows: usize) -> Self {
         let names = panes
             .iter()
             .enumerate()
@@ -89,7 +89,7 @@ impl MultiPane {
         }
     }
 
-    fn pane_join(&self, pane_string: &[String; 4]) -> String {
+    fn pane_join(&self, pane_string: &[String; 6]) -> String {
         format!(
             "{}{}{}\n",
             self.joiner,
@@ -120,7 +120,7 @@ impl MultiPane {
 
 impl fmt::Display for MultiPane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let pane_strings: [Vec<String>; 4] = self.panes.each_ref().map(|p| {
+        let pane_strings: [Vec<String>; 6] = self.panes.each_ref().map(|p| {
             p.to_string()
                 .split('\n')
                 .map(std::string::ToString::to_string)
@@ -129,7 +129,7 @@ impl fmt::Display for MultiPane {
 
         let mut line_iter = String::new();
         for row in 0..self.rows {
-            let shaslica: [String; 4] = pane_strings.each_ref().map(|content_vec| {
+            let shaslica: [String; 6] = pane_strings.each_ref().map(|content_vec| {
                 let def = String::new();
                 let existing = content_vec.get(row);
                 existing.unwrap_or(&def).clone()
@@ -165,6 +165,8 @@ impl Default for DisplayTerminal {
                     ("Construction".to_owned(), 20),
                     ("Research".to_owned(), 20),
                     ("Army".to_owned(), 20),
+                    ("Unused".to_owned(), 3),
+                    ("Errors".to_owned(), 20),
                 ],
                 25,
             ),
@@ -175,7 +177,7 @@ impl Default for DisplayTerminal {
 }
 
 impl DisplayTerminal {
-    pub fn new(panes: [(String, usize); 4], rows: usize) -> Self {
+    pub fn new(panes: [(String, usize); 6], rows: usize) -> Self {
         Self {
             multi_pane: MultiPane::new(panes, rows),
             terminal: Term::stdout(),

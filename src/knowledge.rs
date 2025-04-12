@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use rust_sc2::{
     ids::{EffectId, UnitTypeId},
+    player::Race,
     prelude::{Alliance, Point2},
     unit::Unit,
     units::Units,
@@ -13,6 +14,7 @@ pub struct Knowledge {
     pub first_seen_unit_times: HashMap<UnitTypeId, usize>,
     pub first_seen_friendly_times: HashMap<UnitTypeId, usize>,
     pub seen_units: HashMap<u64, UnitKnowledge>,
+    pub confirmed_enemy_race: Option<Race>,
 }
 
 #[derive(Clone)]
@@ -54,6 +56,9 @@ impl crate::protoss_bot::ReBiCycler {
 }
 
 impl Knowledge {
+    pub fn confirm_race(&mut self, race: Race) {
+        self.confirmed_enemy_race = Some(race);
+    }
     pub fn add_newly_seen_units(&mut self, units: &Units, frame_no: usize) {
         let new_units: HashSet<UnitTypeId> = units
             .iter()
