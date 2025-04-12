@@ -2,7 +2,10 @@ use std::fmt::Debug;
 
 use rust_sc2::{ids::AbilityId, prelude::Point2};
 
-use crate::Tag;
+use crate::{
+    siting::{BuildingStatus, BuildingTransition},
+    Tag,
+};
 
 pub struct UnitEmploymentError(pub String);
 impl Debug for UnitEmploymentError {
@@ -21,7 +24,7 @@ impl Debug for InvalidUnitError {
 #[derive(Debug)]
 pub enum BuildError {
     CantPlace(Point2, rust_sc2::ids::UnitTypeId),
-    CantTransitionBuildingLocation(TransitionError),
+    CantTransitionBuildingLocation(BuildingTransitionError),
     NoBuildingLocationHere(Point2),
     NoBuildingLocationForFinishedBuilding,
     NoPlacementLocations,
@@ -36,8 +39,11 @@ pub enum BuildError {
     NoPower(Point2),
 }
 #[derive(Debug)]
-pub enum TransitionError {
-    InvalidTransition(String),
+pub enum BuildingTransitionError {
+    InvalidTransition {
+        from: BuildingStatus,
+        change: BuildingTransition,
+    },
     InvalidUnit,
 }
 

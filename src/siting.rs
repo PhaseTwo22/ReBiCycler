@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    errors::{BuildError, TransitionError, UnitEmploymentError},
+    errors::{BuildError, BuildingTransitionError, UnitEmploymentError},
     protoss_bot::ReBiCycler,
     Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
@@ -51,7 +51,7 @@ impl BuildingStatus {
         matches!(self, Self::Built(_, _) | Self::Constructing(_, _))
     }
 
-    pub fn depower(self) -> Result<Self, TransitionError> {
+    pub const fn depower(self) -> Result<Self, BuildingTransitionError> {
         use PylonPower as P;
         match self {
             Self::Blocked(whatever, P::Powered) => Ok(Self::Blocked(whatever, P::Depowered)),
@@ -60,9 +60,10 @@ impl BuildingStatus {
             Self::Constructing(whatever, P::Powered) => {
                 Ok(Self::Constructing(whatever, P::Depowered))
             }
-            _ => Err(TransitionError::InvalidTransition(format!(
-                "DePower: {self:?}"
-            ))),
+            _ => Err(BuildingTransitionError::InvalidTransition {
+                from: self,
+                change: BuildingTransition::DePower,
+            }),
         }
     }
 
@@ -104,7 +105,10 @@ impl GasLocation {
         }
     }
 
-    pub fn transition(&mut self, transition: BuildingTransition) -> Result<(), TransitionError> {
+    pub fn transition(
+        &mut self,
+        transition: BuildingTransition,
+    ) -> Result<(), BuildingTransitionError> {
         use BuildingStatus as S;
         use BuildingTransition as T;
         let new_status = match (transition, self.status.clone()) {
@@ -114,11 +118,10 @@ impl GasLocation {
                 if self.status.can_build(tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
-                    Err(TransitionError::InvalidTransition(format!(
-                        "{:?}: {:?}",
-                        transition,
-                        self.status.clone()
-                    )))
+                    Err(BuildingTransitionError::InvalidTransition {
+                        from: self.status.clone(),
+                        change: transition,
+                    })
                 }
             }
             (T::Obstruct, S::Free(intent, power) | S::Blocked(intent, power)) => {
@@ -139,11 +142,10 @@ impl GasLocation {
             | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
             | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
             | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
-                Err(TransitionError::InvalidTransition(format!(
-                    "{:?}: {:?}",
-                    transition,
-                    self.status.clone()
-                )))
+                Err(BuildingTransitionError::InvalidTransition {
+                    from: self.status.clone(),
+                    change: transition,
+                })
             }
         }?;
         self.status = new_status;
@@ -200,6 +202,13 @@ impl BuildingLocation {
         matches!(self.status, BuildingStatus::Free(_, _))
     }
 
+    pub const fn is_mine(&self) -> bool {
+        matches!(
+            self.status,
+            BuildingStatus::Constructing(_, _) | BuildingStatus::Built(_, _)
+        )
+    }
+
     pub fn is_here(&self, building: &Tag) -> bool {
         use BuildingStatus as S;
         match self.status {
@@ -208,7 +217,10 @@ impl BuildingLocation {
         }
     }
 
-    pub fn transition(&mut self, transition: BuildingTransition) -> Result<(), TransitionError> {
+    pub fn transition(
+        &mut self,
+        transition: BuildingTransition,
+    ) -> Result<(), BuildingTransitionError> {
         use BuildingStatus as S;
         use BuildingTransition as T;
         let new_status = match (transition, self.status.clone()) {
@@ -218,11 +230,10 @@ impl BuildingLocation {
                 if self.status.can_build(tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
-                    Err(TransitionError::InvalidTransition(format!(
-                        "{:?}: {:?}",
-                        transition,
-                        self.status.clone()
-                    )))
+                    Err(BuildingTransitionError::InvalidTransition {
+                        from: self.status.clone(),
+                        change: transition,
+                    })
                 }
             }
             (T::Obstruct, S::Free(intent, power) | S::Blocked(intent, power)) => {
@@ -243,11 +254,10 @@ impl BuildingLocation {
             | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
             | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
             | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
-                Err(TransitionError::InvalidTransition(format!(
-                    "{:?}: {:?}",
-                    transition,
-                    self.status.clone()
-                )))
+                Err(BuildingTransitionError::InvalidTransition {
+                    from: self.status.clone(),
+                    change: transition,
+                })
             }
         }?;
         self.status = new_status;
@@ -633,7 +643,7 @@ impl ReBiCycler {
         let position = self
             .siting_director
             .get_available_building_sites(&size, &structure_type)
-            .find(|bl| self.location_is_not_blocked(bl, structure_type));
+            .find(|bl| self.location_is_buildable(bl, structure_type));
 
         if let Some(position) = position {
             let builder = self
@@ -644,7 +654,6 @@ impl ReBiCycler {
                 .ok_or(BuildError::NoTrainer)?;
             builder.build(structure_type, position.location, false);
             builder.sleep(5);
-            println!("Build command sent: {structure_type:?}");
             Ok(())
         } else {
             Err(BuildError::NoPlacementLocations)
@@ -667,45 +676,35 @@ impl ReBiCycler {
         unit_change: UnitTypeId,
         power_point: Point2,
         turned_on: bool,
-    ) -> Result<(), BuildError> {
-        let matrices = self.state.observation.raw.psionic_matrix.clone();
-        if turned_on {
-            let matrix = matrices
-                .iter()
-                .find(|pm| pm.pos == power_point)
-                .ok_or(BuildError::NoPower(power_point))?;
-            for bl in self
-                .siting_director
-                .building_locations
-                .values_mut()
-                .filter(|bl| bl.location.distance(matrix.pos) <= matrix.radius)
-            {
-                let _ = bl.transition(BuildingTransition::RePower);
-            }
-        } else if unit_change == UnitTypeId::Pylon {
-            for bl in self
-                .siting_director
-                .building_locations
-                .values_mut()
-                .filter(|bl| bl.location.distance(power_point) <= PYLON_POWER_RADIUS)
-            {
-                if let Err(e) = bl.transition(BuildingTransition::DePower) {
-                    println!("{e:?}");
-                };
-            }
+    ) {
+        let change_radius = match unit_change {
+            UnitTypeId::Pylon => PYLON_POWER_RADIUS,
+            UnitTypeId::WarpPrismPhasing => PRISM_POWER_RADIUS,
+            UnitTypeId::WarpPrism => PRISM_POWER_RADIUS,
+            _ => 0.0,
+        };
+        let change_type = if turned_on {
+            BuildingTransition::RePower
         } else {
-            for bl in self
-                .siting_director
-                .building_locations
-                .values_mut()
-                .filter(|bl| bl.location.distance(power_point) <= PRISM_POWER_RADIUS)
-            {
-                if let Err(e) = bl.transition(BuildingTransition::DePower) {
-                    println!("{e:?}");
-                };
-            }
+            BuildingTransition::DePower
+        };
+
+        let errors: Vec<BuildingTransitionError> = self
+            .siting_director
+            .building_locations
+            .values_mut()
+            .filter_map(|bl| {
+                if bl.location.distance(power_point) <= change_radius {
+                    bl.transition(change_type).err()
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for error in errors {
+            println!("{error:?}");
         }
-        Ok(())
     }
 
     pub fn update_building_obstructions(&mut self) {
@@ -713,8 +712,9 @@ impl ReBiCycler {
             .siting_director
             .building_locations
             .values()
+            .filter(|bl| !bl.is_mine())
             .map(|bl| {
-                self.location_is_not_blocked(
+                self.location_is_buildable(
                     bl,
                     if let BuildingStatus::Free(Some(type_id), _) = bl.status {
                         type_id
@@ -744,7 +744,7 @@ impl ReBiCycler {
         println!("Building locations updated: {:?}", self.siting_director);
     }
 
-    fn location_is_not_blocked(
+    fn location_is_buildable(
         &self,
         build_location: &BuildingLocation,
         structure_type: UnitTypeId,
@@ -808,7 +808,6 @@ impl ReBiCycler {
                 .ok_or(BuildError::NoTrainer)?;
             builder.build_gas(geyser.geyser_tag, false);
             builder.sleep(5);
-            println!("Build command sent: Assimilator");
             Ok(())
         } else {
             Err(BuildError::NoPlacementLocations)

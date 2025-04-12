@@ -22,12 +22,7 @@ impl ReBiCycler {
                 println!("BaseManager failed to initialize: {e:?}");
             }
         } else if building.type_id() == UnitTypeId::Pylon {
-            if let Err(e) = self.update_building_power(UnitTypeId::Pylon, building.position(), true)
-            {
-                println!(
-                    "Error in powering buildings when Pylon {building_tag:?} completed: {e:?}"
-                );
-            }
+            self.update_building_power(UnitTypeId::Pylon, building.position(), true);
         } else if crate::is_assimilator(building.type_id()) {
             let bc = building.clone();
             if let Err(e) = self.mining_manager.add_resource(bc) {

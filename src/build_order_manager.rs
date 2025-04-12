@@ -145,18 +145,18 @@ impl ReBiCycler {
             match err {
                 BuildError::CantPlace(location, _type_id) => {
                     if let Err(err) = self.siting_director.mark_position_blocked(location) {
-                        println!("Can't block non-templated building location: {err:?}");
-                    };
+                        self.unhandle_build(err, action);
+                    } else {
+                        // bad location marked blocked, no problem.
+                    }
                 }
-                _ => println!("Build order blocked: {action:?} > {err:?}"),
+                _ => self.unhandle_build(err, action),
             }
-        } else {
-            println!("BuildOrderAction OK: {action:?}");
         }
     }
 
-    fn unhandle_build(&mut self, be: BuildError) {
-        let message = format!("Build error not yet handled: {be:?}");
+    fn unhandle_build(&mut self, err: BuildError, action: BuildOrderAction) {
+        let message = format!("Build error not yet handled: {err:?} from {action:?}");
         self.display_terminal.write_line_to_pane("Errors", message);
     }
 
@@ -262,11 +262,6 @@ impl ReBiCycler {
             AbilityId::EffectChronoBoostEnergyCost,
             Target::Tag(target.tag()),
             false,
-        );
-        println!(
-            "Chrono! {:?} on {:?}",
-            crate::Tag::from_unit(nexus),
-            crate::Tag::from_unit(target),
         );
         Ok(())
     }

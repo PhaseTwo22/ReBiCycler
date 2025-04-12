@@ -1,5 +1,6 @@
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
+use crate::errors::UnhandledError;
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
 use crate::readout::DisplayTerminal;
@@ -31,12 +32,9 @@ impl Player for ReBiCycler {
             self.units.vespene_geysers.clone(),
             map_center,
         );
-        println!("Building templates placed: {:?}", self.siting_director);
+
         self.update_building_obstructions();
 
-        println!("Global siting complete: {:?}", self.siting_director);
-
-        println!("Game start!");
         self.game_started = true;
         Ok(())
     }
@@ -72,9 +70,6 @@ impl Player for ReBiCycler {
                 self.start_construction(building_tag);
             }
             Event::RandomRaceDetected(race) => {
-                if self.enemy_race.is_random() {
-                    println!("This cheeser is {race:?}!");
-                };
                 self.knowledge.confirm_race(race);
             }
         }
@@ -82,6 +77,7 @@ impl Player for ReBiCycler {
     }
 
     fn on_end(&self, _result: GameResult) -> SC2Result<()> {
+        self.display_terminal.save_history("replays/history.txt");
         Ok(())
     }
 }
@@ -108,19 +104,19 @@ impl ReBiCycler {
             .collect();
         for mineral in nearby_minerals {
             if let Err(e) = self.mining_manager.add_resource(mineral) {
-                println!("Error adding initial minerals: {e:?}");
+                self.unhandle_unhandle(format!("Error adding initial minerals: {e:?}"));
             };
         }
 
         for worker in &self.units.my.workers.clone() {
             if self.back_to_work(worker).is_err() {
-                println!("No bases at game start?!");
+                self.unhandle_unhandle("No bases at game start?!".to_string());
             }
         }
     }
 
-    fn unit_destroyed(&mut self, unit_tag: u64, _alliance: Option<Alliance>) {
-        let knowledge = self.knowledge.unit_destroyed(unit_tag);
+    fn unit_destroyed(&mut self, tag: u64, _alliance: Option<Alliance>) {
+        let knowledge = self.knowledge.unit_destroyed(tag);
 
         if let Ok(unit_details) = knowledge {
             println!(
@@ -128,7 +124,7 @@ impl ReBiCycler {
                 unit_details.alliance, unit_details.type_id
             );
             let unit_tag = Tag {
-                tag: unit_tag,
+                tag,
                 unit_type: unit_details.type_id,
             };
             if crate::is_assimilator(unit_details.type_id) {
@@ -143,13 +139,11 @@ impl ReBiCycler {
                 if unit_details.type_id == UnitTypeId::Pylon
                     || unit_details.type_id == UnitTypeId::WarpPrismPhasing
                 {
-                    if let Err(e) = self.update_building_power(
+                    self.update_building_power(
                         unit_details.type_id,
                         unit_details.last_position,
                         false,
-                    ) {
-                        println!("Error depowering pylon: {e:?}");
-                    }
+                    );
                 }
             } else if crate::is_minerals(unit_details.type_id) {
                 let unemployed: Vec<Unit> = self
@@ -175,11 +169,15 @@ impl ReBiCycler {
         if let Some(unit) = self.units.my.units.get(unit_tag).cloned() {
             if unit.type_id() == UnitTypeId::Probe && self.game_started {
                 if let Err(e) = self.back_to_work(&unit) {
-                    println!("Unable to assign new probe to a nexus? {e:?}");
+                    self.unhandle_unhandle(format!("Unable to assign new probe to a nexus? {e:?}"));
                 }
             }
         } else {
-            println!("UnitCreated but unit not found! {unit_tag}");
+            self.unhandle_unhandle(format!("UnitCreated but unit not found! {unit_tag}"));
         }
+    }
+
+    fn unhandle_unhandle(&mut self, uhe: UnhandledError) {
+        self.display_terminal.write_line_to_pane("Errors", uhe);
     }
 }
