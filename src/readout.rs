@@ -1,6 +1,8 @@
 use std::{
     collections::HashMap,
     fmt::{self},
+    fs::File,
+    io::{self, Write},
 };
 
 use console::{measure_text_width, strip_ansi_codes, truncate_str, Term};
@@ -119,10 +121,12 @@ impl MultiPane {
 
 impl fmt::Display for MultiPane {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let pane_strings: [Vec<String>; 4] = self
-            .panes
-            .each_ref()
-            .map(|p| p.to_string().split('\n').map(std::string::ToString::to_string).collect());
+        let pane_strings: [Vec<String>; 4] = self.panes.each_ref().map(|p| {
+            p.to_string()
+                .split('\n')
+                .map(std::string::ToString::to_string)
+                .collect()
+        });
 
         let mut line_iter = String::new();
         for row in 0..self.rows {
@@ -148,6 +152,7 @@ impl fmt::Display for MultiPane {
 pub struct DisplayTerminal {
     multi_pane: MultiPane,
     terminal: Term,
+    history: Vec<String>,
 }
 
 impl Default for DisplayTerminal {
@@ -163,6 +168,7 @@ impl Default for DisplayTerminal {
                 25,
             ),
             terminal: Term::stdout(),
+            history: Vec::new(),
         }
     }
 }
@@ -172,6 +178,7 @@ impl DisplayTerminal {
         Self {
             multi_pane: MultiPane::new(panes, rows),
             terminal: Term::stdout(),
+            history: Vec::new(),
         }
     }
 
@@ -179,10 +186,17 @@ impl DisplayTerminal {
         let content = self.multi_pane.to_string();
         let _ = self.terminal.clear_last_lines(self.multi_pane.rows + 100);
         let _ = self.terminal.write_line(&content);
+        self.history.push(content);
         self.multi_pane.clear();
     }
 
     pub fn write_line_to_pane(&mut self, pane_name: &str, msg: String) {
         self.multi_pane.write_line_to_pane(pane_name, msg);
+    }
+
+    pub fn save_history(&self, filename: &str) -> io::Result<()> {
+        let mut output = File::create(filename)?;
+        let line = self.history.iter().join("\n\n");
+        write!(output, "{line}")
     }
 }

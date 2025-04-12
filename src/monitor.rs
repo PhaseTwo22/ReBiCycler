@@ -1,10 +1,41 @@
 use crate::protoss_bot::ReBiCycler;
-use rust_sc2::ids::UpgradeId;
+
+use rust_sc2::ids::{BuffId, UpgradeId};
 use rust_sc2::{ids::AbilityId, prelude::UnitTypeId, units::Units};
 use std::collections::HashMap;
+
 use std::hash::Hash;
+
+const ARMOR_ICON: &str = "🛡️";
+const WEAPONS_ICON: &str = "🔪";
+const SHIELD_ICON: &str = "🔵";
+const WARPGATE_ICON: &str = "🌀";
+const STORM_ICON: &str = "🌩️";
+const DT_BLINK_ICON: &str = "🧞";
+const CHARGE_ICON: &str = "👟";
+const BLINK_ICON: &str = "👁️";
+const GLAIVES_ICON: &str = "🥏";
+const PRISMSPEED_ICON: &str = "💠";
+const OBSERVERSPEED_ICON: &str = "🔆";
+const LANCES_ICON: &str = "🌡️";
+const PHEONIXRANGE_ICON: &str = "💎";
+const VOIDSPEED_ICON: &str = "🚀";
+const TECTONIC_ICON: &str = "💥";
+const NOT_RESEARCHED: &str = "  ";
+
 impl ReBiCycler {
-    const fn monitor(&self) {}
+    pub fn monitor(&mut self, frame_no: usize) {
+        self.display_construction();
+
+        self.display_protoss_research();
+
+        self.production_tab();
+        self.show_chronos();
+
+        self.army_composition();
+
+        self.display_terminal.flush();
+    }
 
     fn production_tab(&mut self) {
         let data = self.production_facilities();
@@ -31,6 +62,30 @@ impl ReBiCycler {
         lines.sort();
         let formatted = self.display_production(&mut lines);
         for line in formatted {
+            self.display_terminal.write_line_to_pane("Production", line);
+        }
+    }
+
+    fn show_chronos(&mut self) {
+        let mut chronos = Vec::new();
+        for (chronoed_unit, (ability, _, _)) in self.units.my.structures.iter().filter_map(|u| {
+            if u.has_buff(BuffId::ChronoBoostEnergyCost) && u.order().is_some() {
+                Some((u, u.order()?))
+            } else {
+                None
+            }
+        }) {
+            let out = format!(
+                "{:?}:{:?}",
+                chronoed_unit.type_id(),
+                crate::ability_produces(&ability)
+            );
+            chronos.push(out);
+        }
+
+        self.display_terminal
+            .write_line_to_pane("Production", "Chrono's:".to_string());
+        for line in chronos {
             self.display_terminal.write_line_to_pane("Production", line);
         }
     }
@@ -86,68 +141,134 @@ impl ReBiCycler {
         count_and_max
     }
 
-    fn idle_tech_structures(&self) -> HashMap<UnitTypeId, usize> {
-        let idle_structures = self
-            .units
-            .my
-            .structures
-            .idle()
-            .filter(|u| crate::is_protoss_tech(u.type_id()));
-        Self::count_unit_types(idle_structures)
-    }
-
-    fn display_protoss_research(&self) {
-        [
+    fn display_protoss_research(&mut self) {
+        let ground_weapons = [
             UpgradeId::ProtossGroundWeaponsLevel1,
             UpgradeId::ProtossGroundWeaponsLevel2,
             UpgradeId::ProtossGroundWeaponsLevel3,
-        ];
-        [
+        ]
+        .map(|u| {
+            if self.has_upgrade(u) {
+                WEAPONS_ICON
+            } else {
+                ""
+            }
+        })
+        .join("");
+
+        let ground_armor = [
             UpgradeId::ProtossGroundArmorsLevel1,
             UpgradeId::ProtossGroundArmorsLevel2,
             UpgradeId::ProtossGroundArmorsLevel3,
-        ];
-        [
+        ]
+        .map(|u| if self.has_upgrade(u) { ARMOR_ICON } else { "" })
+        .join("");
+
+        let air_weapons = [
             UpgradeId::ProtossAirWeaponsLevel1,
             UpgradeId::ProtossAirWeaponsLevel2,
             UpgradeId::ProtossAirWeaponsLevel3,
-        ];
-        [
+        ]
+        .map(|u| {
+            if self.has_upgrade(u) {
+                WEAPONS_ICON
+            } else {
+                ""
+            }
+        })
+        .join("");
+
+        let air_armor = [
             UpgradeId::ProtossAirArmorsLevel1,
             UpgradeId::ProtossAirArmorsLevel2,
             UpgradeId::ProtossAirArmorsLevel3,
-        ];
-        [
+        ]
+        .map(|u| if self.has_upgrade(u) { ARMOR_ICON } else { "" })
+        .join("");
+
+        let shields = [
             UpgradeId::ProtossShieldsLevel1,
             UpgradeId::ProtossShieldsLevel2,
             UpgradeId::ProtossShieldsLevel3,
+        ]
+        .map(|u| if self.has_upgrade(u) { SHIELD_ICON } else { "" })
+        .join("");
+
+        let mut lines: Vec<String> = vec![
+            format!("Ground: {ground_armor}{ground_weapons}"),
+            format!("Air: {air_armor}{air_weapons}"),
+            format!("Shields: {shields}"),
         ];
-        let lines: Vec<String> = Vec::new();
-        for unit in self
+
+        let mut ability_upgrades: Vec<String> = vec![
+            [
+                (UpgradeId::WarpGateResearch, WARPGATE_ICON),
+                (UpgradeId::PsiStormTech, STORM_ICON),
+                (UpgradeId::DarkTemplarBlinkUpgrade, DT_BLINK_ICON),
+            ],
+            [
+                (UpgradeId::Charge, CHARGE_ICON),
+                (UpgradeId::BlinkTech, BLINK_ICON),
+                (UpgradeId::AdeptPiercingAttack, GLAIVES_ICON),
+            ],
+            [
+                (UpgradeId::GraviticDrive, PRISMSPEED_ICON),
+                (UpgradeId::ObserverGraviticBooster, OBSERVERSPEED_ICON),
+                (UpgradeId::ExtendedThermalLance, LANCES_ICON),
+            ],
+            [
+                (UpgradeId::AnionPulseCrystals, PHEONIXRANGE_ICON),
+                (UpgradeId::VoidRaySpeedUpgrade, VOIDSPEED_ICON),
+                (UpgradeId::TempestGroundAttackUpgrade, TECTONIC_ICON),
+            ],
+        ]
+        .iter()
+        .map(|array| {
+            array
+                .map(|(up, icon)| {
+                    if self.has_upgrade(up) {
+                        icon
+                    } else {
+                        NOT_RESEARCHED
+                    }
+                })
+                .join(" ")
+        })
+        .collect();
+
+        lines.append(&mut ability_upgrades);
+
+        for (ability, _target, progress) in self
             .units
             .my
             .structures
             .filter(|u| crate::is_protoss_tech(u.type_id()))
+            .iter()
+            .filter_map(rust_sc2::prelude::Unit::order)
         {
-            // Ground:
-            // 🛡️🛡️🛡️🔪🔪🔪
-            // Air:
-            // 🛡️🛡️  🔪🔪
-            // Shield:
-            // 🔵
+            let out = format!("- {:?}:{:.2}%", ability, progress * 100.0);
+            lines.push(out);
+        }
 
-            // 🌀 👟 💠 💎
-            // 🌩️ ​👁️ 🔆 🚀
-            // 🧞 🥏 🌡️ 💥
-
-            // In progress:
-            // 👁️[56s left]
+        for line in lines {
+            self.display_terminal.write_line_to_pane("Research", line);
         }
     }
-    fn army_composition(&self) -> HashMap<UnitTypeId, usize> {
+    fn army_composition(&mut self) {
         let army = self.units.my.units.filter(|u| !u.is_worker());
 
-        Self::count_unit_types(army)
+        let existing_workers = self.supply_workers.saturating_sub(
+            (self.counter().ordered().count(UnitTypeId::Probe))
+                .try_into()
+                .unwrap(),
+        );
+        let msg = format!("Workers: {existing_workers}");
+        self.display_terminal.write_line_to_pane("Army", msg);
+
+        for (unit, count) in Self::count_unit_types(army) {
+            let out = format!("- {unit:?}: {count}");
+            self.display_terminal.write_line_to_pane("Army", out);
+        }
     }
 
     fn display_construction(&mut self) {

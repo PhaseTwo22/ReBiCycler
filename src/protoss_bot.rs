@@ -54,10 +54,7 @@ impl Player for ReBiCycler {
 
         //self.micro();
         if frame_no % 250 == 0 {
-            println!(
-                "Step step step {}, M:{}, G:{}, S:{}/{}",
-                frame_no, self.minerals, self.vespene, self.supply_used, self.supply_cap
-            );
+            self.monitor(frame_no);
         };
 
         Ok(())
