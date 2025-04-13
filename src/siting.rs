@@ -362,8 +362,8 @@ impl SlotSize {
     const fn default_checker(self) -> UnitTypeId {
         match self {
             Self::Tumor => UnitTypeId::CreepTumor,
-            Self::Small => UnitTypeId::SupplyDepot,
-            Self::Standard => UnitTypeId::Barracks,
+            Self::Small => UnitTypeId::Pylon,
+            Self::Standard => UnitTypeId::Gateway,
             Self::Townhall => UnitTypeId::Nexus,
         }
     }
