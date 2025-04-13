@@ -153,7 +153,10 @@ impl ReBiCycler {
         if let Err(err) = result {
             match err {
                 BuildError::CantPlace(location, _type_id) => {
-                    if let Err(err) = self.siting_director.mark_position_blocked(location, true) {
+                    if let Err(err) = self.siting_director.mark_position_blocked(
+                        location,
+                        crate::siting::BuildingTransition::Obstruct,
+                    ) {
                         self.unhandle_build(err, action);
                     } else {
                         // bad location marked blocked, no problem.
@@ -170,9 +173,7 @@ impl ReBiCycler {
         action: BuildOrderAction,
     ) {
         let error_part = err.map_either(|x| format!("{x:?}"), |y| format!("{y:?}"));
-        let message = format!(
-            "Build error not yet handled: {action:?} from {error_part:?}"
-        );
+        let message = format!("Build error not yet handled: {action:?} from {error_part:?}");
         self.display_terminal
             .write_line_to_pane("Errors", message, true);
     }

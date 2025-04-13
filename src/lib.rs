@@ -147,6 +147,20 @@ pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
     )
 }
 
+#[must_use] pub const fn structure_needs_power(unit: UnitTypeId) -> bool {
+    if is_protoss_building(unit) {
+        matches!(
+            unit,
+            UnitTypeId::Assimilator
+                | UnitTypeId::AssimilatorRich
+                | UnitTypeId::Nexus
+                | UnitTypeId::Pylon
+        )
+    } else {
+        false
+    }
+}
+
 fn building_names(unit: UnitTypeId) -> String {
     match unit {
         UnitTypeId::Nexus => "Nexus",

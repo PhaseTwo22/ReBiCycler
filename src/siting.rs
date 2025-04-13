@@ -8,7 +8,7 @@ use std::{
 use crate::{
     errors::{BuildError, BuildingTransitionError, UnitEmploymentError},
     protoss_bot::ReBiCycler,
-    Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
+    structure_needs_power, Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
 use itertools::Either;
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
@@ -32,18 +32,15 @@ pub enum BuildingStatus {
 }
 impl BuildingStatus {
     pub fn can_build(&self, type_id: UnitTypeId) -> bool {
+        let needs_power = crate::structure_needs_power(type_id);
+
         match self {
-            Self::Free(None, PylonPower::Powered)
-            | Self::Free(
-                Some(
-                    UnitTypeId::Pylon
-                    | UnitTypeId::Nexus
-                    | UnitTypeId::Assimilator
-                    | UnitTypeId::AssimilatorRich,
-                ),
-                _,
-            ) => true,
-            Self::Free(Some(intent), PylonPower::Powered) => *intent == type_id,
+            Self::Free(intent, power) => {
+                let power_ok = needs_power && *power == PylonPower::Powered;
+                let intent_ok = intent.map_or(true, |i| i == type_id);
+                power_ok && intent_ok
+            }
+
             _ => false,
         }
     }
@@ -218,6 +215,15 @@ impl BuildingLocation {
         }
     }
 
+    pub fn could_build(&self) -> bool {
+        match self.status {
+            BuildingStatus::Free(intent, _) => self
+                .status
+                .can_build(intent.unwrap_or(self.size.default_checker())),
+            _ => false,
+        }
+    }
+
     /// Gets a `UnitTypeId` to use to evaluate whether or not we can place something here
     /// If we already have something here, return None
     /// Otherwise, return something we could use to actually check it.
@@ -231,6 +237,17 @@ impl BuildingLocation {
             }
             _ => None,
         }
+    }
+
+    pub const fn needs_power(&self) -> bool {
+        let unit_type = match self.status {
+            BuildingStatus::Blocked(Some(intent), _) => intent,
+            BuildingStatus::Free(Some(intent), _) => intent,
+            BuildingStatus::Constructing(tag, _) => tag.unit_type,
+            BuildingStatus::Built(tag, _) => tag.unit_type,
+            _ => return true, //no intent, probably needs power.
+        };
+        crate::structure_needs_power(unit_type)
     }
 
     pub fn transition(
@@ -379,21 +396,21 @@ impl Debug for SitingDirector {
         let small_sites = self
             .building_locations
             .values()
-            .filter(|bl| bl.size == SlotSize::Small && bl.is_free())
+            .filter(|bl| bl.size == SlotSize::Small && bl.could_build())
             .count();
         let standard_sites = self
             .building_locations
             .values()
-            .filter(|bl| bl.size == SlotSize::Standard && bl.is_free())
+            .filter(|bl| bl.size == SlotSize::Standard && bl.could_build())
             .count();
         let large_sites = self
             .building_locations
             .values()
-            .filter(|bl| bl.size == SlotSize::Townhall && bl.is_free())
+            .filter(|bl| bl.size == SlotSize::Townhall && bl.could_build())
             .count();
         write!(
             f,
-            "Siting Director: S:{small_sites:?} M:{standard_sites:?} L:{large_sites:?}"
+            "Sites: S:{small_sites:?} M:{standard_sites:?} L:{large_sites:?}"
         )
     }
 }
@@ -487,17 +504,12 @@ impl SitingDirector {
     pub fn mark_position_blocked(
         &mut self,
         location: Point2,
-        make_obstructed: bool,
+        make_obstructed: BuildingTransition,
     ) -> Result<(), Either<BuildError, BuildingTransitionError>> {
-        let change = if make_obstructed {
-            BuildingTransition::Obstruct
-        } else {
-            BuildingTransition::UnObstruct
-        };
         self.building_locations
             .get_mut(&location)
             .ok_or(Either::Left(BuildError::NoBuildingLocationHere(location)))?
-            .transition(change)
+            .transition(make_obstructed)
             .map_err(|_| Either::Left(BuildError::NoBuildingLocationHere(location)))
     }
 
@@ -543,9 +555,9 @@ impl SitingDirector {
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
         self.building_locations.values().filter(|bl| {
-            let fits_intention = bl.status.can_build(*type_id);
+            let fits_status = bl.status.can_build(*type_id);
             let fits_size = bl.size == *size;
-            fits_size && fits_intention
+            fits_size && fits_status
         })
     }
 
@@ -668,7 +680,7 @@ impl ReBiCycler {
         let position = self
             .siting_director
             .get_available_building_sites(&size, &structure_type)
-            .find(|bl| self.location_is_buildable(bl.location, structure_type))
+            .next()
             .ok_or(BuildError::NoPlacementLocations)?;
 
         let builder = self
@@ -731,6 +743,7 @@ impl ReBiCycler {
     pub fn update_building_obstructions(
         &mut self,
     ) -> Vec<Either<BuildError, BuildingTransitionError>> {
+        // a site is worth checking for this update if it's blocked or its free, constructing and built locations shouldn't be checked
         let worth_checking =
             self.siting_director
                 .building_locations
@@ -739,11 +752,14 @@ impl ReBiCycler {
                     bl.placement_checker()
                         .map(|checker| (p.to_owned(), checker))
                 });
-        let changes: Vec<(Point2, bool)> = worth_checking
+
+        // then we check if those locations are actually obstructed
+        let changes: Vec<(Point2, BuildingTransition)> = worth_checking
             .into_iter()
-            .map(|(point, checker)| (point, self.location_is_buildable(point, checker)))
+            .map(|(point, checker)| (point, self.location_is_obstructed(point, checker)))
             .collect();
 
+        // then we update their status based on our findings
         changes
             .into_iter()
             .filter_map(|(point, make_blocked)| {
@@ -754,7 +770,12 @@ impl ReBiCycler {
             .collect()
     }
 
-    fn location_is_buildable(&self, point: Point2, structure_type: UnitTypeId) -> bool {
+    fn location_is_obstructed(
+        &self,
+        point: Point2,
+        structure_type: UnitTypeId,
+    ) -> BuildingTransition {
+        // ask the game if we can place this building here
         let result = self
             .query_placement(
                 vec![(
@@ -765,13 +786,21 @@ impl ReBiCycler {
                 false,
             )
             .unwrap()[0];
-        if result == ActionResult::Success {
-            true
-        } else if result == ActionResult::CantBuildLocationInvalid {
-            false
+
+        // Success: great.
+        // If the error we get is no power, i think that means it's ok.
+        if result == ActionResult::Success
+            || result == ActionResult::CantBuildTooFarFromBuildPowerSource
+        {
+            BuildingTransition::UnObstruct
+        }
+        // this seems to be the catchall result
+        else if result == ActionResult::CantBuildLocationInvalid {
+            BuildingTransition::Obstruct
         } else {
+            // this is a new result that I haven't seen before
             println!("Location {point:?} is blocked: {result:?}");
-            false
+            BuildingTransition::Obstruct
         }
     }
 
