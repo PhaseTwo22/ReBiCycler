@@ -1,10 +1,11 @@
 use std::f32::consts::TAU;
 
+use itertools::Either;
 use rust_sc2::{game_state::PsionicMatrix, prelude::*};
 
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction, BuildOrderComponent},
-    errors::BuildError,
+    errors::{BuildError, BuildingTransitionError},
     protoss_bot::ReBiCycler,
 };
 
@@ -126,12 +127,20 @@ impl ReBiCycler {
     fn attempt_build_action(&mut self, action: BuildOrderAction) {
         let result = match action {
             BuildOrderAction::Expand => {
-                self.update_building_obstructions();
+                let issues = self.update_building_obstructions();
+                let _: () = issues
+                    .into_iter()
+                    .map(|e| self.unhandle_build(e, action))
+                    .collect();
                 self.build(UnitTypeId::Nexus)
             }
             BuildOrderAction::Construct(UnitTypeId::Assimilator) => self.build_gas(),
             BuildOrderAction::Construct(unit_type) => {
-                self.update_building_obstructions();
+                let issues = self.update_building_obstructions();
+                let _: () = issues
+                    .into_iter()
+                    .map(|e| self.unhandle_build(e, action))
+                    .collect();
                 self.build(unit_type)
             }
             BuildOrderAction::Train(unit_type, ability) => self.train(unit_type, ability),
@@ -144,20 +153,28 @@ impl ReBiCycler {
         if let Err(err) = result {
             match err {
                 BuildError::CantPlace(location, _type_id) => {
-                    if let Err(err) = self.siting_director.mark_position_blocked(location) {
+                    if let Err(err) = self.siting_director.mark_position_blocked(location, true) {
                         self.unhandle_build(err, action);
                     } else {
                         // bad location marked blocked, no problem.
                     }
                 }
-                _ => self.unhandle_build(err, action),
+                _ => self.unhandle_build(Either::Left(err), action),
             }
         }
     }
 
-    fn unhandle_build(&mut self, err: BuildError, action: BuildOrderAction) {
-        let message = format!("Build error not yet handled: {err:?} from {action:?}");
-        self.display_terminal.write_line_to_pane("Errors", message);
+    pub fn unhandle_build(
+        &mut self,
+        err: Either<BuildError, BuildingTransitionError>,
+        action: BuildOrderAction,
+    ) {
+        let error_part = err.map_either(|x| format!("{x:?}"), |y| format!("{y:?}"));
+        let message = format!(
+            "Build error not yet handled: {action:?} from {error_part:?}"
+        );
+        self.display_terminal
+            .write_line_to_pane("Errors", message, true);
     }
 
     fn train(&self, unit_type: UnitTypeId, ability: AbilityId) -> Result<(), BuildError> {

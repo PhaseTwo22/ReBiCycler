@@ -8,10 +8,6 @@ impl ReBiCycler {
             println!("ConstructionComplete but unit not found! {building_tag}");
             return;
         };
-        println!(
-            "Building Finished! {:?}, {building_tag}",
-            building.type_id()
-        );
         let building = building.clone();
         if let Err(e) = self.siting_director.finish_construction(&building) {
             println!("Error finishing building: {e:?}");
@@ -36,7 +32,6 @@ impl ReBiCycler {
             println!("ConstructionStarted but building not found! {building_tag}");
             return;
         };
-        println!("New Building! {:?}, {building_tag}", building.type_id());
         let tag = Tag::from_unit(&building);
 
         if (building.type_id() == UnitTypeId::Assimilator)

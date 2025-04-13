@@ -51,6 +51,15 @@ impl Pane {
         self.content.push(message);
     }
 
+    pub fn add_line_wrapped(&mut self, message: String) {
+        let mut message = strip_ansi_codes(&message).to_string();
+        while !message.is_empty() {
+            let (chunk, rest) = message.split_at(std::cmp::min(self.width, message.len()));
+            self.add_line(chunk.to_string());
+            message = rest.to_string();
+        }
+    }
+
     fn correct_length(&self, message: &str) -> String {
         let tail = "...";
         let truncated = truncate_str(message, self.width, tail).to_string();
@@ -98,7 +107,7 @@ impl MultiPane {
         )
     }
 
-    pub fn write_line_to_pane(&mut self, pane_name: &str, line: String) {
+    pub fn write_line_to_pane(&mut self, pane_name: &str, line: String, wrapped: bool) {
         let index = self.pane_names.get(pane_name).unwrap_or_else(|| {
             panic!(
                 "Display panel name not found: {}.\nOptions are: \n - {}",
@@ -110,7 +119,11 @@ impl MultiPane {
             .panes
             .get_mut(*index)
             .unwrap_or_else(|| panic!("Display panel index mapping not found: {pane_name}"));
-        pane.add_line(line);
+        if wrapped {
+            pane.add_line_wrapped(line);
+        } else {
+            pane.add_line(line);
+        }
     }
 
     pub fn clear(&mut self) {
@@ -151,6 +164,8 @@ impl fmt::Display for MultiPane {
 }
 
 pub struct DisplayTerminal {
+    header: Pane,
+    footer: Pane,
     multi_pane: MultiPane,
     terminal: Term,
     history: Vec<String>,
@@ -158,18 +173,29 @@ pub struct DisplayTerminal {
 
 impl Default for DisplayTerminal {
     fn default() -> Self {
+        let pane_template = [
+            ("Production".to_owned(), 20),
+            ("Construction".to_owned(), 20),
+            ("Research".to_owned(), 20),
+            ("Army".to_owned(), 20),
+            ("Unused".to_owned(), 3),
+            ("Errors".to_owned(), 60),
+        ];
+        let multi_width = pane_template.iter().map(|(_, width)| width).sum();
         Self {
-            multi_pane: MultiPane::new(
-                [
-                    ("Production".to_owned(), 20),
-                    ("Construction".to_owned(), 20),
-                    ("Research".to_owned(), 20),
-                    ("Army".to_owned(), 20),
-                    ("Unused".to_owned(), 3),
-                    ("Errors".to_owned(), 20),
-                ],
-                25,
-            ),
+            header: Pane {
+                name: "header".to_string(),
+                width: multi_width,
+                rows: 3,
+                content: Vec::new(),
+            },
+            footer: Pane {
+                name: "footer".to_string(),
+                width: multi_width,
+                rows: 5,
+                content: Vec::new(),
+            },
+            multi_pane: MultiPane::new(pane_template, 25),
             terminal: Term::stdout(),
             history: Vec::new(),
         }
@@ -177,24 +203,30 @@ impl Default for DisplayTerminal {
 }
 
 impl DisplayTerminal {
-    pub fn new(panes: [(String, usize); 6], rows: usize) -> Self {
-        Self {
-            multi_pane: MultiPane::new(panes, rows),
-            terminal: Term::stdout(),
-            history: Vec::new(),
-        }
-    }
-
     pub fn flush(&mut self) {
-        let content = self.multi_pane.to_string();
-        let _ = self.terminal.clear_last_lines(self.multi_pane.rows + 100);
+        let multi_content = self.multi_pane.to_string();
+        let header_content = self.header.to_string();
+        let footer_content = self.footer.to_string();
+        let content = format!("{header_content}\n{multi_content}\n{footer_content}");
+        //let _ = self.terminal.clear_last_lines(self.multi_pane.rows + 100);
         let _ = self.terminal.write_line(&content);
         self.history.push(content);
+
         self.multi_pane.clear();
+        self.header.clear();
+        self.footer.clear();
     }
 
-    pub fn write_line_to_pane(&mut self, pane_name: &str, msg: String) {
-        self.multi_pane.write_line_to_pane(pane_name, msg);
+    pub fn write_line_to_pane(&mut self, pane_name: &str, msg: String, wrapped: bool) {
+        self.multi_pane.write_line_to_pane(pane_name, msg, wrapped);
+    }
+
+    pub fn write_line_to_header(&mut self, msg: String) {
+        self.header.add_line(msg);
+    }
+
+    pub fn write_line_to_footer(&mut self, msg: String) {
+        self.footer.add_line(msg);
     }
 
     pub fn save_history(&self, filename: &str) -> io::Result<()> {

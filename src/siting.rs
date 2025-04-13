@@ -10,6 +10,7 @@ use crate::{
     protoss_bot::ReBiCycler,
     Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
+use itertools::Either;
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
 
 const ACCEPTABLE_GAS_DISTANCE: f32 = 12.0;
@@ -214,6 +215,21 @@ impl BuildingLocation {
         match self.status {
             S::Built(tag, _) | S::Constructing(tag, _) => *building == tag,
             _ => false,
+        }
+    }
+
+    /// Gets a `UnitTypeId` to use to evaluate whether or not we can place something here
+    /// If we already have something here, return None
+    /// Otherwise, return something we could use to actually check it.
+    pub fn placement_checker(&self) -> Option<UnitTypeId> {
+        // when is it good to check?
+        // when I don't have anything here.
+        // when it's maybe blocked.
+        match self.status {
+            BuildingStatus::Blocked(intent, _) | BuildingStatus::Free(intent, _) => {
+                intent.or_else(|| Some(self.size.default_checker()))
+            }
+            _ => None,
         }
     }
 
@@ -468,12 +484,21 @@ impl SitingDirector {
         }
     }
 
-    pub fn mark_position_blocked(&mut self, location: Point2) -> Result<(), BuildError> {
+    pub fn mark_position_blocked(
+        &mut self,
+        location: Point2,
+        make_obstructed: bool,
+    ) -> Result<(), Either<BuildError, BuildingTransitionError>> {
+        let change = if make_obstructed {
+            BuildingTransition::Obstruct
+        } else {
+            BuildingTransition::UnObstruct
+        };
         self.building_locations
             .get_mut(&location)
-            .ok_or(BuildError::NoBuildingLocationHere(location))?
-            .transition(BuildingTransition::Obstruct)
-            .map_err(|_| BuildError::NoBuildingLocationHere(location))
+            .ok_or(Either::Left(BuildError::NoBuildingLocationHere(location)))?
+            .transition(change)
+            .map_err(|_| Either::Left(BuildError::NoBuildingLocationHere(location)))
     }
 
     fn build_expansion_template(
@@ -643,21 +668,18 @@ impl ReBiCycler {
         let position = self
             .siting_director
             .get_available_building_sites(&size, &structure_type)
-            .find(|bl| self.location_is_buildable(bl, structure_type));
+            .find(|bl| self.location_is_buildable(bl.location, structure_type))
+            .ok_or(BuildError::NoPlacementLocations)?;
 
-        if let Some(position) = position {
-            let builder = self
-                .units
-                .my
-                .workers
-                .closest(position.location)
-                .ok_or(BuildError::NoTrainer)?;
-            builder.build(structure_type, position.location, false);
-            builder.sleep(5);
-            Ok(())
-        } else {
-            Err(BuildError::NoPlacementLocations)
-        }
+        let builder = self
+            .units
+            .my
+            .workers
+            .closest(position.location)
+            .ok_or(BuildError::NoTrainer)?;
+        builder.build(structure_type, position.location, false);
+        builder.sleep(5);
+        Ok(())
     }
     /// Tells a base with a free geyser to build an assimilator.
     /// # Errors
@@ -679,8 +701,7 @@ impl ReBiCycler {
     ) {
         let change_radius = match unit_change {
             UnitTypeId::Pylon => PYLON_POWER_RADIUS,
-            UnitTypeId::WarpPrismPhasing => PRISM_POWER_RADIUS,
-            UnitTypeId::WarpPrism => PRISM_POWER_RADIUS,
+            UnitTypeId::WarpPrismPhasing | UnitTypeId::WarpPrism => PRISM_POWER_RADIUS,
             _ => 0.0,
         };
         let change_type = if turned_on {
@@ -707,53 +728,38 @@ impl ReBiCycler {
         }
     }
 
-    pub fn update_building_obstructions(&mut self) {
-        let blocked: Vec<bool> = self
-            .siting_director
-            .building_locations
-            .values()
-            .filter(|bl| !bl.is_mine())
-            .map(|bl| {
-                self.location_is_buildable(
-                    bl,
-                    if let BuildingStatus::Free(Some(type_id), _) = bl.status {
-                        type_id
-                    } else {
-                        bl.size.default_checker()
-                    },
-                )
-            })
+    pub fn update_building_obstructions(
+        &mut self,
+    ) -> Vec<Either<BuildError, BuildingTransitionError>> {
+        let worth_checking =
+            self.siting_director
+                .building_locations
+                .iter()
+                .filter_map(|(p, bl)| {
+                    bl.placement_checker()
+                        .map(|checker| (p.to_owned(), checker))
+                });
+        let changes: Vec<(Point2, bool)> = worth_checking
+            .into_iter()
+            .map(|(point, checker)| (point, self.location_is_buildable(point, checker)))
             .collect();
 
-        let _: () = self
-            .siting_director
-            .building_locations
-            .values_mut()
-            .zip(blocked)
-            .map(|(bl, can_place)| {
-                if can_place {
-                    if let Err(e) = bl.transition(BuildingTransition::UnObstruct) {
-                        println!("{e:?}");
-                    };
-                } else if let Err(e) = bl.transition(BuildingTransition::Obstruct) {
-                    println!("{e:?}");
-                }
+        changes
+            .into_iter()
+            .filter_map(|(point, make_blocked)| {
+                self.siting_director
+                    .mark_position_blocked(point, make_blocked)
+                    .err()
             })
-            .collect();
-
-        println!("Building locations updated: {:?}", self.siting_director);
+            .collect()
     }
 
-    fn location_is_buildable(
-        &self,
-        build_location: &BuildingLocation,
-        structure_type: UnitTypeId,
-    ) -> bool {
+    fn location_is_buildable(&self, point: Point2, structure_type: UnitTypeId) -> bool {
         let result = self
             .query_placement(
                 vec![(
                     self.game_data.units[&structure_type].ability.unwrap(),
-                    build_location.location,
+                    point,
                     None,
                 )],
                 false,
@@ -764,10 +770,7 @@ impl ReBiCycler {
         } else if result == ActionResult::CantBuildLocationInvalid {
             false
         } else {
-            println!(
-                "Location {:?} is blocked: {:?}",
-                build_location.location, result
-            );
+            println!("Location {point:?} is blocked: {result:?}");
             false
         }
     }

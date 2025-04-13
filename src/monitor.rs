@@ -1,5 +1,6 @@
 use crate::protoss_bot::ReBiCycler;
 
+use itertools::Itertools;
 use rust_sc2::ids::{BuffId, UpgradeId};
 use rust_sc2::{ids::AbilityId, prelude::UnitTypeId, units::Units};
 use std::collections::HashMap;
@@ -25,7 +26,9 @@ const NOT_RESEARCHED: &str = "  ";
 
 impl ReBiCycler {
     pub fn monitor(&mut self, _frame_no: usize) {
+        self.display_general();
         self.display_construction();
+        self.display_structures();
 
         self.display_protoss_research();
 
@@ -35,6 +38,24 @@ impl ReBiCycler {
         self.army_composition();
 
         self.display_terminal.flush();
+    }
+
+    fn display_general(&mut self) {
+        let players = self
+            .game_info
+            .players
+            .values()
+            .flat_map(|p| &p.player_name)
+            .join(" vs ");
+        let map = format!("{} | {}", self.game_info.map_name, players);
+        let header = format!(
+            "M: {} G: {} S:{}/{}",
+            self.minerals, self.vespene, self.supply_used, self.supply_cap
+        );
+        self.display_terminal.write_line_to_header(map);
+        self.display_terminal.write_line_to_header(header);
+        self.display_terminal
+            .write_line_to_header(format!("{:?}", self.siting_director));
     }
 
     fn production_tab(&mut self) {
@@ -60,7 +81,8 @@ impl ReBiCycler {
         lines.sort();
         let formatted = Self::format_production(&mut lines);
         for line in formatted {
-            self.display_terminal.write_line_to_pane("Production", line);
+            self.display_terminal
+                .write_line_to_pane("Production", line, false);
         }
     }
 
@@ -82,9 +104,10 @@ impl ReBiCycler {
         }
 
         self.display_terminal
-            .write_line_to_pane("Production", "Chrono's:".to_string());
+            .write_line_to_pane("Production", "Chrono's:".to_string(), false);
         for line in chronos {
-            self.display_terminal.write_line_to_pane("Production", line);
+            self.display_terminal
+                .write_line_to_pane("Production", line, false);
         }
     }
 
@@ -158,7 +181,8 @@ impl ReBiCycler {
         }
 
         for line in lines {
-            self.display_terminal.write_line_to_pane("Research", line);
+            self.display_terminal
+                .write_line_to_pane("Research", line, false);
         }
     }
 
@@ -268,11 +292,11 @@ impl ReBiCycler {
             .supply_workers
             .saturating_sub(self.counter().ordered().count(UnitTypeId::Probe) as u32);
         let msg = format!("Workers: {existing_workers}");
-        self.display_terminal.write_line_to_pane("Army", msg);
+        self.display_terminal.write_line_to_pane("Army", msg, false);
 
         for (unit, count) in Self::count_unit_types(&army) {
             let out = format!("- {unit:?}: {count}");
-            self.display_terminal.write_line_to_pane("Army", out);
+            self.display_terminal.write_line_to_pane("Army", out, false);
         }
     }
 
@@ -294,7 +318,21 @@ impl ReBiCycler {
         }
         for line in out {
             self.display_terminal
-                .write_line_to_pane("Construction", line);
+                .write_line_to_pane("Construction", line, false);
+        }
+    }
+
+    fn display_structures(&mut self) {
+        self.display_terminal
+            .write_line_to_pane("Construction", "Finished:".to_string(), false);
+        for (unit_type, count) in
+            Self::count_unit_types(&self.units.my.structures.filter(|u| u.is_ready()))
+        {
+            self.display_terminal.write_line_to_pane(
+                "Construction",
+                format!("{unit_type:?}[{count}]"),
+                false,
+            );
         }
     }
 

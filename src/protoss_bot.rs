@@ -33,8 +33,6 @@ impl Player for ReBiCycler {
             map_center,
         );
 
-        self.update_building_obstructions();
-
         self.game_started = true;
         Ok(())
     }
@@ -178,6 +176,7 @@ impl ReBiCycler {
     }
 
     fn unhandle_unhandle(&mut self, uhe: UnhandledError) {
-        self.display_terminal.write_line_to_pane("Errors", uhe);
+        self.display_terminal
+            .write_line_to_pane("Errors", uhe, true);
     }
 }

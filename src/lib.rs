@@ -173,6 +173,7 @@ fn building_names(unit: UnitTypeId) -> String {
 
 const fn ability_produces(ability: AbilityId) -> UnitTypeId {
     match ability {
+        AbilityId::NexusTrainProbe => UnitTypeId::Probe,
         AbilityId::TrainAdept => UnitTypeId::Adept,
         AbilityId::GatewayTrainZealot => UnitTypeId::Zealot,
         AbilityId::GatewayTrainSentry => UnitTypeId::Sentry,
