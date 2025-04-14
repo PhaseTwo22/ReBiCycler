@@ -437,6 +437,15 @@ impl SitingDirector {
             .collect();
     }
 
+    pub fn add_initial_nexus(&mut self, nexus: Unit) -> Result<(), BuildError> {
+        let home_loc = self
+            .building_locations
+            .get_mut(&nexus.position())
+            .ok_or(BuildError::CantPlace(nexus.position(), nexus.type_id()))?;
+        home_loc.status = BuildingStatus::Built(Tag::from_unit(&nexus), PylonPower::Depowered);
+        Ok(())
+    }
+
     pub fn add_assimilator(&mut self, building: &Unit) -> Result<(), BuildError> {
         let geyser = self
             .gas_locations
@@ -490,13 +499,17 @@ impl SitingDirector {
         if structure.is_geyser() {
             self.gas_locations
                 .get_mut(&structure.tag())
-                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?
+                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding(
+                    structure.type_id(),
+                ))?
                 .transition(BuildingTransition::Finish)
                 .map_err(BuildError::CantTransitionBuildingLocation)
         } else {
             self.building_locations
                 .get_mut(&structure.position())
-                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding)?
+                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding(
+                    structure.type_id(),
+                ))?
                 .transition(BuildingTransition::Finish)
                 .map_err(BuildError::CantTransitionBuildingLocation)
         }

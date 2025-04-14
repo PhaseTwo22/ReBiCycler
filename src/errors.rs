@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use rust_sc2::{
-    ids::{AbilityId, UpgradeId},
+    ids::{AbilityId, UnitTypeId, UpgradeId},
     prelude::Point2,
 };
 
@@ -29,7 +29,7 @@ pub enum BuildError {
     CantPlace(Point2, rust_sc2::ids::UnitTypeId),
     CantTransitionBuildingLocation(BuildingTransitionError),
     NoBuildingLocationHere(Point2),
-    NoBuildingLocationForFinishedBuilding,
+    NoBuildingLocationForFinishedBuilding(UnitTypeId),
     NoPlacementLocations,
     CantAfford,
     InvalidUnit(String),

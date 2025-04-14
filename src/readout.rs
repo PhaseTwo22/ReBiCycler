@@ -32,7 +32,7 @@ impl fmt::Display for Pane {
         let nice = std::iter::once(&self.name)
             .chain(self.content.iter())
             .chain(padding.iter())
-            .map(|s| self.correct_length(s))
+            .map(|s| self.correct_length(s, "…"))
             .join("\n");
         write!(f, "{nice}")
     }
@@ -47,21 +47,25 @@ impl Pane {
             content: Vec::new(),
         }
     }
-    pub fn add_line(&mut self, message: String) {
-        self.content.push(message);
+    pub fn add_line(&mut self, message: String, trunc: bool) {
+        let out = if trunc {
+            self.correct_length(&message, "…")
+        } else {
+            message
+        };
+        self.content.push(out);
     }
 
     pub fn add_line_wrapped(&mut self, message: String) {
         let mut message = strip_ansi_codes(&message).to_string();
         while !message.is_empty() {
             let (chunk, rest) = message.split_at(std::cmp::min(self.width, message.len()));
-            self.add_line(chunk.to_string());
+            self.add_line(chunk.to_string(), false);
             message = rest.to_string();
         }
     }
 
-    fn correct_length(&self, message: &str) -> String {
-        let tail = "...";
+    fn correct_length(&self, message: &str, tail: &str) -> String {
         let truncated = truncate_str(message, self.width, tail).to_string();
 
         let too_short_by = self.width.saturating_sub(measure_text_width(&truncated));
@@ -122,7 +126,7 @@ impl MultiPane {
         if wrapped {
             pane.add_line_wrapped(line);
         } else {
-            pane.add_line(line);
+            pane.add_line(line, !wrapped);
         }
     }
 
@@ -222,11 +226,11 @@ impl DisplayTerminal {
     }
 
     pub fn write_line_to_header(&mut self, msg: String) {
-        self.header.add_line(msg);
+        self.header.add_line(msg, true);
     }
 
     pub fn write_line_to_footer(&mut self, msg: String) {
-        self.footer.add_line(msg);
+        self.footer.add_line(msg, true);
     }
 
     pub fn save_history(&self, filename: &str) -> io::Result<()> {

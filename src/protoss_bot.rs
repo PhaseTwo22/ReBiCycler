@@ -1,6 +1,6 @@
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
-use crate::errors::UnhandledError;
+use crate::errors::{BuildError, UnhandledError};
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
 use crate::readout::DisplayTerminal;
@@ -110,6 +110,22 @@ impl ReBiCycler {
             if self.back_to_work(worker).is_err() {
                 self.unhandle_unhandle("No bases at game start?!".to_string());
             }
+        }
+
+        let initial_slotting = self
+            .units
+            .my
+            .townhalls
+            .first()
+            .ok_or_else(|| BuildError::InvalidUnit("No nexus at game start?!".to_string()))
+            .cloned();
+        let inserted = match initial_slotting {
+            Ok(nexus) => self.siting_director.add_initial_nexus(nexus),
+            Err(e) => Err(e),
+        };
+
+        if let Err(e) = inserted {
+            self.unhandle_unhandle(format!("Can't place nexus in initial buildingslot: {e:?}"));
         }
     }
 

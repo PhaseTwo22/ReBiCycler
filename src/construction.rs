@@ -15,14 +15,14 @@ impl ReBiCycler {
 
         if building.type_id() == UnitTypeId::Nexus {
             if let Err(e) = self.new_base_finished(&building.clone()) {
-                println!("BaseManager failed to initialize: {e:?}");
+                println!("Can't add to Mining Manager: {e:?}");
             }
         } else if building.type_id() == UnitTypeId::Pylon {
             self.update_building_power(UnitTypeId::Pylon, building.position(), true);
         } else if crate::is_assimilator(building.type_id()) {
             let bc = building.clone();
             if let Err(e) = self.mining_manager.add_resource(bc) {
-                println!("I expected this to be harvestable: {e:?}");
+                println!("Can't mine this: {e:?}");
             };
         }
     }
