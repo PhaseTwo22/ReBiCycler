@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 
-use rust_sc2::{ids::AbilityId, prelude::Point2};
+use rust_sc2::{
+    ids::{AbilityId, UpgradeId},
+    prelude::Point2,
+};
 
 use crate::{
     siting::{BuildingStatus, BuildingTransition},
@@ -31,6 +34,7 @@ pub enum BuildError {
     CantAfford,
     InvalidUnit(String),
     NoTrainer,
+    NoResearcher(UpgradeId),
     AllBusy(AbilityId),
     AllChronoed(AbilityId),
     AlreadyResearching,

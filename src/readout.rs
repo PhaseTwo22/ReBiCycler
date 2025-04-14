@@ -175,10 +175,10 @@ impl Default for DisplayTerminal {
     fn default() -> Self {
         let pane_template = [
             ("Production".to_owned(), 20),
-            ("Construction".to_owned(), 20),
-            ("Research".to_owned(), 20),
+            ("Construction".to_owned(), 25),
+            ("Research".to_owned(), 25),
             ("Army".to_owned(), 20),
-            ("Unused".to_owned(), 3),
+            ("Build Order".to_owned(), 25),
             ("Errors".to_owned(), 60),
         ];
         let multi_width = pane_template.iter().map(|(_, width)| width).sum();

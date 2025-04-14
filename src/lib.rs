@@ -147,9 +147,10 @@ pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
     )
 }
 
-#[must_use] pub const fn structure_needs_power(unit: UnitTypeId) -> bool {
+#[must_use]
+pub const fn structure_needs_power(unit: UnitTypeId) -> bool {
     if is_protoss_building(unit) {
-        matches!(
+        !matches!(
             unit,
             UnitTypeId::Assimilator
                 | UnitTypeId::AssimilatorRich
@@ -157,7 +158,7 @@ pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
                 | UnitTypeId::Pylon
         )
     } else {
-        false
+        true
     }
 }
 

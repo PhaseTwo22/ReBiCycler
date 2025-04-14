@@ -7,8 +7,9 @@ use std::{
 
 use crate::{
     errors::{BuildError, BuildingTransitionError, UnitEmploymentError},
+    micro::MiningError,
     protoss_bot::ReBiCycler,
-    structure_needs_power, Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
+    Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
 use itertools::Either;
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
@@ -36,7 +37,7 @@ impl BuildingStatus {
 
         match self {
             Self::Free(intent, power) => {
-                let power_ok = needs_power && *power == PylonPower::Powered;
+                let power_ok = !needs_power || *power == PylonPower::Powered;
                 let intent_ok = intent.map_or(true, |i| i == type_id);
                 power_ok && intent_ok
             }
@@ -219,7 +220,7 @@ impl BuildingLocation {
         match self.status {
             BuildingStatus::Free(intent, _) => self
                 .status
-                .can_build(intent.unwrap_or(self.size.default_checker())),
+                .can_build(intent.unwrap_or_else(|| self.size.default_checker())),
             _ => false,
         }
     }
@@ -241,10 +242,10 @@ impl BuildingLocation {
 
     pub const fn needs_power(&self) -> bool {
         let unit_type = match self.status {
-            BuildingStatus::Blocked(Some(intent), _) => intent,
-            BuildingStatus::Free(Some(intent), _) => intent,
-            BuildingStatus::Constructing(tag, _) => tag.unit_type,
-            BuildingStatus::Built(tag, _) => tag.unit_type,
+            BuildingStatus::Blocked(Some(intent), _) | BuildingStatus::Free(Some(intent), _) => {
+                intent
+            }
+            BuildingStatus::Constructing(tag, _) | BuildingStatus::Built(tag, _) => tag.unit_type,
             _ => return true, //no intent, probably needs power.
         };
         crate::structure_needs_power(unit_type)
@@ -820,8 +821,16 @@ impl ReBiCycler {
     /// # Errors
     /// `BuildError::NoBuildingLocationHere` if the base isn't on an expansion location
     pub fn new_base_finished(&mut self, nexus: &Unit) -> Result<(), BuildError> {
-        self.mining_manager.add_townhall(nexus.clone());
-        Ok(())
+        self.mining_manager
+            .add_townhall(nexus.clone())
+            .map_err(|e| {
+                if let MiningError::NotTownhall(tag) = e {
+                    BuildError::InvalidUnit(format!("{tag:?} is not a townhall"))
+                } else {
+                    println!("new error from finising a base: {e:?}");
+                    todo!("new error from finising a base: {e:?}")
+                }
+            })
     }
     /// Finds a gas to take at the specified base and builds it
     /// # Errors
@@ -851,6 +860,7 @@ impl ReBiCycler {
 mod tests {
     use super::*;
 
+    const ORIGIN: Point2 = Point2 { x: 0.0, y: 0.0 };
     #[test]
     fn intersect_ok() {
         let origin = Point2::new(0.0, 0.0);
@@ -902,5 +912,46 @@ mod tests {
         let buildings = SitingDirector::pylon_blossom(origin);
 
         assert!(!buildings_intersect(&buildings));
+    }
+    #[test]
+    fn grubub() {
+        let mut pylon = BuildingLocation::pylon(Point2::new(0.0, 0.0));
+
+        assert!(!pylon.needs_power());
+        assert!(pylon.is_free());
+        assert!(pylon.status.can_build(UnitTypeId::Pylon));
+
+        pylon
+            .transition(BuildingTransition::Construct(Tag {
+                tag: 1,
+                unit_type: UnitTypeId::Pylon,
+            }))
+            .unwrap();
+
+        assert!(pylon.is_mine());
+
+        pylon.transition(BuildingTransition::Finish).unwrap();
+
+        pylon.transition(BuildingTransition::Destroy).unwrap();
+
+        assert!(pylon.is_free());
+    }
+
+    #[test]
+    fn cant_build_unpowered_gateway() {
+        let mut gate_location = BuildingLocation::standard(ORIGIN);
+
+        gate_location
+            .transition(BuildingTransition::Construct(Tag {
+                tag: 2,
+                unit_type: UnitTypeId::Gateway,
+            }))
+            .expect_err("unpowered location can't be built");
+
+        gate_location
+            .transition(BuildingTransition::RePower)
+            .unwrap();
+
+        assert!(gate_location.could_build());
     }
 }

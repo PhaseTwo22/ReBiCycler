@@ -1,10 +1,10 @@
-use std::vec;
+use std::{fmt::Display, vec};
 
 use rust_sc2::prelude::{AbilityId, UnitTypeId, UpgradeId};
 
 use crate::build_order_manager::BuildOrder;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildCondition {
     SupplyAtLeast(u32),
     SupplyBetween(u32, u32),
@@ -15,23 +15,66 @@ pub enum BuildCondition {
     AtLeastCount(UnitTypeId, usize),
     DontHaveAnyDone(UnitTypeId),
     DontHaveAnyStarted(UnitTypeId),
+    Never,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildOrderAction {
     Train(UnitTypeId, AbilityId),
     Construct(UnitTypeId),
     Chrono(AbilityId),
-    Research(UpgradeId, UnitTypeId, AbilityId),
+    Research(UpgradeId, AbilityId, UnitTypeId),
     Expand,
+    Surrender,
 }
-#[derive(Clone)]
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentState {
+    NotYetStarted,
+    Active,
+    Completed,
+}
+
+impl Display for ComponentState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let out = match self {
+            Self::NotYetStarted => "➖",
+            Self::Active => "⏳",
+            Self::Completed => "✅",
+        }
+        .to_string();
+        write!(f, "{out}")
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct BuildOrderComponent {
     pub name: String,
     pub start_conditions: Vec<BuildCondition>,
     pub end_conditions: Vec<BuildCondition>,
     pub action: BuildOrderAction,
+    pub state: ComponentState,
+}
+
+impl Display for BuildOrderComponent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.name, self.state)
+    }
 }
 impl BuildOrderComponent {
+    pub fn new(
+        name: &str,
+        start_conditions: &[BuildCondition],
+        end_conditions: &[BuildCondition],
+        action: BuildOrderAction,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            start_conditions: start_conditions.into(),
+            end_conditions: end_conditions.into(),
+            action,
+            state: ComponentState::NotYetStarted,
+        }
+    }
     pub fn consecutive(
         chain: &[(String, &[BuildCondition], BuildOrderAction)],
         last_end_conditions: &[BuildCondition],
@@ -49,6 +92,7 @@ impl BuildOrderComponent {
                     name: name.clone(),
                     end_conditions: end_conditions.to_vec(),
                     start_conditions: start_conditions.to_vec(),
+                    state: ComponentState::NotYetStarted,
                 });
             } else {
                 out.push(Self {
@@ -56,10 +100,19 @@ impl BuildOrderComponent {
                     name: name.clone(),
                     end_conditions: last_end_conditions.to_vec(),
                     start_conditions: start_conditions.to_vec(),
+                    state: ComponentState::NotYetStarted,
                 });
             }
         }
         out
+    }
+
+    pub fn complete(&mut self) {
+        self.state = ComponentState::Completed;
+    }
+
+    pub fn activate(&mut self) {
+        self.state = ComponentState::Active;
     }
 }
 
@@ -68,35 +121,69 @@ pub fn four_base_charge() -> BuildOrder {
     use BuildCondition::*;
     use BuildOrderAction::*;
     use BuildOrderComponent as Component;
-    let mut parts = BuildOrderComponent::consecutive(
-        &[
-            (
-                "Build a nexus if we don't have any".to_string(),
-                &[
-                    DontHaveAnyStarted(UnitTypeId::Nexus),
-                    DontHaveAnyDone(UnitTypeId::Nexus),
-                ],
-                Expand,
-            ),
-            (
-                "Probe up to 14".to_string(),
-                &[
-                    LessThanCount(UnitTypeId::Probe, 14),
-                    AtLeastCount(UnitTypeId::Nexus, 1),
-                ],
-                Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
-            ),
-            (
-                "Build three pylons".to_string(),
-                &[
-                    AtLeastCount(UnitTypeId::Probe, 14),
-                    DontHaveAnyStarted(UnitTypeId::Pylon),
-                ],
-                Construct(UnitTypeId::Pylon),
-            ),
-        ],
-        &[AtLeastCount(UnitTypeId::Pylon, 3)],
-    );
+
+    let mut surrender = vec![Component::new(
+        "surrender",
+        &[SupplyBetween(0, 1), LessThanCount(UnitTypeId::Nexus, 1)],
+        &[],
+        Surrender,
+    )];
+    let mut rebuild_from_nothing = vec![
+        Component::new(
+            "Build a nexus if we don't have any",
+            &[
+                DontHaveAnyStarted(UnitTypeId::Nexus),
+                DontHaveAnyDone(UnitTypeId::Nexus),
+            ],
+            &[AtLeastCount(UnitTypeId::Nexus, 1)],
+            Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+        ),
+        Component::new(
+            "Probe up to 10",
+            &[LessThanCount(UnitTypeId::Probe, 10)],
+            &[AtLeastCount(UnitTypeId::Probe, 10)],
+            Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+        ),
+    ];
+
+    let mut opener = vec![
+        BuildOrderComponent::new(
+            "Probe up to 14",
+            &[
+                LessThanCount(UnitTypeId::Probe, 14),
+                DontHaveAnyStarted(UnitTypeId::Probe),
+            ],
+            &[
+                AtLeastCount(UnitTypeId::Probe, 14),
+                AtLeastCount(UnitTypeId::Nexus, 1),
+            ],
+            Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+        ),
+        BuildOrderComponent::new(
+            "Build first pylon",
+            &[
+                AtLeastCount(UnitTypeId::Probe, 13),
+                DontHaveAnyStarted(UnitTypeId::Pylon),
+            ],
+            &[AtLeastCount(UnitTypeId::Pylon, 1)],
+            Construct(UnitTypeId::Pylon),
+        ),
+    ];
+
+    let mut maintain_supply = vec![
+        Component::new(
+            "Maintain supply 1",
+            &[SupplyLeftBelow(4), DontHaveAnyStarted(UnitTypeId::Pylon)],
+            &[AtLeastCount(UnitTypeId::Gateway, 3)],
+            Construct(UnitTypeId::Pylon),
+        ),
+        Component::new(
+            "Maintain supply 2",
+            &[SupplyLeftBelow(8), DontHaveAnyStarted(UnitTypeId::Pylon)],
+            &[Never],
+            Construct(UnitTypeId::Pylon),
+        ),
+    ];
 
     let mut expand_and_probe = vec![
         Component {
@@ -108,31 +195,35 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::Probe, 40)],
             action: Chrono(AbilityId::NexusTrainProbe),
+            state: ComponentState::NotYetStarted,
         },
         Component {
-            name: "Take 4 gasses".to_string(),
+            name: "Take 2 gasses".to_string(),
             start_conditions: vec![
                 AtLeastCount(UnitTypeId::Pylon, 1),
                 AtLeastCount(UnitTypeId::Nexus, 1),
                 AtLeastCount(UnitTypeId::Probe, 16),
             ],
-            end_conditions: vec![AtLeastCount(UnitTypeId::Assimilator, 4)],
+            end_conditions: vec![AtLeastCount(UnitTypeId::Assimilator, 2)],
             action: Construct(UnitTypeId::Assimilator),
+            state: ComponentState::NotYetStarted,
         },
         Component {
-            name: "Probe to 48".to_string(),
+            name: "Probe to 44".to_string(),
             start_conditions: vec![AtLeastCount(UnitTypeId::Pylon, 1)],
-            end_conditions: vec![AtLeastCount(UnitTypeId::Probe, 48)],
+            end_conditions: vec![AtLeastCount(UnitTypeId::Probe, 44)],
             action: Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+            state: ComponentState::NotYetStarted,
         },
         Component {
-            name: "Expand to 4 bases".to_string(),
+            name: "Expand to 2 bases".to_string(),
             start_conditions: vec![
                 AtLeastCount(UnitTypeId::Pylon, 1),
                 AtLeastCount(UnitTypeId::Nexus, 1),
             ],
-            end_conditions: vec![AtLeastCount(UnitTypeId::Nexus, 4)],
+            end_conditions: vec![AtLeastCount(UnitTypeId::Nexus, 2)],
             action: Expand,
+            state: ComponentState::NotYetStarted,
         },
     ];
 
@@ -145,6 +236,7 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::Gateway, 1)],
             action: Construct(UnitTypeId::Gateway),
+            state: ComponentState::NotYetStarted,
         },
         Component {
             name: "Build cyber core".to_string(),
@@ -154,17 +246,19 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::CyberneticsCore, 1)],
             action: Construct(UnitTypeId::CyberneticsCore),
+            state: ComponentState::NotYetStarted,
         },
-        // Component {
-        //     name: "Reseach warpgate".to_string(),
-        //     start_conditions: vec![StructureComplete(UnitTypeId::CyberneticsCore)],
-        //     end_conditions: vec![TechComplete(UpgradeId::WarpGateResearch)],
-        //     action: Research(
-        //         UpgradeId::WarpGateResearch,
-        //         UnitTypeId::CyberneticsCore,
-        //         AbilityId::ResearchWarpGate,
-        //     ),
-        // },
+        Component {
+            name: "Reseach warpgate".to_string(),
+            start_conditions: vec![StructureComplete(UnitTypeId::CyberneticsCore)],
+            end_conditions: vec![TechComplete(UpgradeId::WarpGateResearch)],
+            action: Research(
+                UpgradeId::WarpGateResearch,
+                AbilityId::ResearchWarpGate,
+                UnitTypeId::CyberneticsCore,
+            ),
+            state: ComponentState::NotYetStarted,
+        },
         Component {
             name: "Build twilight council".to_string(),
             start_conditions: vec![
@@ -173,6 +267,7 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::TwilightCouncil, 1)],
             action: Construct(UnitTypeId::TwilightCouncil),
+            state: ComponentState::NotYetStarted,
         },
         Component {
             name: "Reseach charge".to_string(),
@@ -183,15 +278,17 @@ pub fn four_base_charge() -> BuildOrder {
             end_conditions: vec![TechComplete(UpgradeId::Charge)],
             action: Research(
                 UpgradeId::Charge,
-                UnitTypeId::TwilightCouncil,
                 AbilityId::ResearchCharge,
+                UnitTypeId::TwilightCouncil,
             ),
+            state: ComponentState::NotYetStarted,
         },
         Component {
             name: "Chrono charge".to_string(),
             start_conditions: vec![StructureComplete(UnitTypeId::TwilightCouncil)],
             end_conditions: vec![TechComplete(UpgradeId::Charge)],
             action: Chrono(AbilityId::ResearchCharge),
+            state: ComponentState::NotYetStarted,
         },
     ];
 
@@ -201,6 +298,7 @@ pub fn four_base_charge() -> BuildOrder {
             start_conditions: vec![AtLeastCount(UnitTypeId::Nexus, 2)],
             end_conditions: vec![AtLeastCount(UnitTypeId::Gateway, 6)],
             action: Construct(UnitTypeId::Gateway),
+            state: ComponentState::NotYetStarted,
         },
         Component {
             name: "Up to 12 gates".to_string(),
@@ -210,6 +308,7 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::Gateway, 6)],
             action: Construct(UnitTypeId::Gateway),
+            state: ComponentState::NotYetStarted,
         },
     ];
 
@@ -225,17 +324,69 @@ pub fn four_base_charge() -> BuildOrder {
                 AtLeastCount(UnitTypeId::Zealot, 2),
             ],
             action: Train(UnitTypeId::Zealot, AbilityId::GatewayTrainZealot),
+            state: ComponentState::NotYetStarted,
         },
         Component {
             name: "Make zealots indefinitely".to_string(),
             start_conditions: vec![StructureComplete(UnitTypeId::WarpGate)],
             end_conditions: vec![],
             action: Train(UnitTypeId::Zealot, AbilityId::GatewayTrainZealot),
+            state: ComponentState::NotYetStarted,
         },
     ];
+
+    let mut parts = Vec::new();
+    parts.append(&mut surrender);
+    parts.append(&mut rebuild_from_nothing);
+    parts.append(&mut opener);
+    parts.append(&mut maintain_supply);
     parts.append(&mut expand_and_probe);
     parts.append(&mut get_charge);
     parts.append(&mut add_more_gateways);
     parts.append(&mut train_zealots);
     BuildOrder(parts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn consecutive_works_ok() {
+        use BuildCondition::*;
+        use BuildOrderAction::*;
+        let parts = BuildOrderComponent::consecutive(
+            &[
+                (
+                    "1".to_string(),
+                    &[BuildCondition::AtLeastCount(UnitTypeId::Probe, 1)],
+                    Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+                ),
+                (
+                    "2".to_string(),
+                    &[BuildCondition::AtLeastCount(UnitTypeId::Probe, 2)],
+                    Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+                ),
+            ],
+            &[AtLeastCount(UnitTypeId::Probe, 3)],
+        );
+
+        let actual = vec![
+            BuildOrderComponent {
+                name: "1".to_string(),
+                start_conditions: vec![BuildCondition::AtLeastCount(UnitTypeId::Probe, 1)],
+                end_conditions: vec![BuildCondition::AtLeastCount(UnitTypeId::Probe, 2)],
+                action: BuildOrderAction::Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+                state: ComponentState::NotYetStarted,
+            },
+            BuildOrderComponent {
+                name: "2".to_string(),
+                start_conditions: vec![BuildCondition::AtLeastCount(UnitTypeId::Probe, 2)],
+                end_conditions: vec![BuildCondition::AtLeastCount(UnitTypeId::Probe, 3)],
+                action: BuildOrderAction::Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
+                state: ComponentState::NotYetStarted,
+            },
+        ];
+
+        assert_eq!(parts, actual);
+    }
 }

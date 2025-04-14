@@ -32,11 +32,13 @@ impl ReBiCycler {
 
         self.display_protoss_research();
 
+        self.display_build_order();
+
         self.production_tab();
         self.show_chronos();
 
         self.army_composition();
-
+        self.show_available_techs();
         self.display_terminal.flush();
     }
 
@@ -47,7 +49,13 @@ impl ReBiCycler {
             .values()
             .flat_map(|p| &p.player_name)
             .join(" vs ");
-        let map = format!("{} | {}", self.game_info.map_name, players);
+        let map = format!(
+            "{} | {} [{:.0}:{:0>2.0}]",
+            self.game_info.map_name,
+            players,
+            self.time / 60.0,
+            self.time % 60.0,
+        );
         let header = format!(
             "M: {} G: {} S:{}/{}",
             self.minerals, self.vespene, self.supply_used, self.supply_cap
@@ -157,6 +165,24 @@ impl ReBiCycler {
                 .or_insert((1, 0.0));
         }
         count_and_max
+    }
+
+    fn display_build_order(&mut self) {
+        for boc in self.build_order.iter() {
+            let should_start = self.evaluate_conditions(&boc.start_conditions);
+            let should_end = self.evaluate_conditions(&boc.end_conditions);
+            let icon = match (should_start, should_end) {
+                (_, true) => "✅",
+                (false, false) => "➖",
+                (true, false) => "⏳",
+            }
+            .to_string();
+
+            let out = format!("{}{}", boc.name, icon);
+
+            self.display_terminal
+                .write_line_to_pane("Build Order", out, true);
+        }
     }
 
     fn display_protoss_research(&mut self) {
@@ -343,6 +369,25 @@ impl ReBiCycler {
             .map(|u| increment_map(&mut counts, u.type_id()))
             .collect();
         counts
+    }
+
+    fn show_available_techs(&mut self) {
+        self.display_terminal
+            .write_line_to_footer("Available Tech:".to_string());
+        let abilities: Vec<AbilityId> = self
+            .units
+            .my
+            .structures
+            .iter()
+            .filter(|u| crate::is_protoss_tech(u.type_id()))
+            .filter_map(|u| u.abilities().map(std::iter::IntoIterator::into_iter))
+            .flatten()
+            .unique()
+            .collect();
+        for ability in abilities {
+            self.display_terminal
+                .write_line_to_footer(format!("- {ability:?}"));
+        }
     }
 }
 
