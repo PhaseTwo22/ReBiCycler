@@ -71,8 +71,9 @@ impl ReBiCycler {
                 let has_worker = !self.units.my.workers.is_empty();
                 afford && has_worker
             }
-            BuildOrderAction::Research(upgrade, reseacher, _) => {
-                self.units
+            BuildOrderAction::Research(upgrade, _, reseacher) => {
+                !self
+                    .units
                     .my
                     .structures
                     .of_type(reseacher)
@@ -89,10 +90,11 @@ impl ReBiCycler {
                     .any(|s| s.has_ability(ability));
                 has_trainer
             }
+            BuildOrderAction::Surrender => true,
         }
     }
 
-    fn evaluate_conditions(&self, conditions: &[BuildCondition]) -> bool {
+    pub fn evaluate_conditions(&self, conditions: &[BuildCondition]) -> bool {
         conditions.iter().all(|condition| match condition {
             BuildCondition::DontHaveAnyDone(unit) => self.counter().count(*unit) == 0,
             BuildCondition::DontHaveAnyStarted(unit) => self.counter().ordered().count(*unit) == 0,
@@ -121,6 +123,7 @@ impl ReBiCycler {
             BuildCondition::AtLeastCount(unit_type, desired_count) => {
                 self.counter().all().count(*unit_type) >= *desired_count
             }
+            BuildCondition::Never => false,
         })
     }
 
@@ -145,8 +148,17 @@ impl ReBiCycler {
             }
             BuildOrderAction::Train(unit_type, ability) => self.train(unit_type, ability),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(ability),
-            BuildOrderAction::Research(upgrade, researcher, ability) => {
-                self.research(researcher, upgrade, ability)
+            BuildOrderAction::Research(upgrade, ability, researcher) => {
+                self.display_terminal.write_line_to_footer(format!(
+                    "Attempting build action to {ability:?} for {upgrade:?}"
+                ));
+                self.research(upgrade, ability, researcher)
+            }
+            BuildOrderAction::Surrender => {
+                println!("Surrendering. GG!");
+                self.on_end(GameResult::Defeat);
+                let _ = self.leave();
+                Ok(())
             }
         };
 
@@ -162,6 +174,7 @@ impl ReBiCycler {
                         // bad location marked blocked, no problem.
                     }
                 }
+                BuildError::AllBusy(_) | BuildError::AllChronoed(_) => (),
                 _ => self.unhandle_build(Either::Left(err), action),
             }
         }
@@ -292,30 +305,28 @@ impl ReBiCycler {
     /// `BuildError::NoTrainer` if the required structure is destroyed. Not sure about depowered.
     pub fn research(
         &self,
-        researcher: UnitTypeId,
         upgrade: UpgradeId,
         ability: AbilityId,
+        researcher: UnitTypeId,
     ) -> Result<(), BuildError> {
+        println!("trying to start research {ability:?}");
         if self.has_upgrade(upgrade) && self.is_ordered_upgrade(upgrade) {
             Err(BuildError::AlreadyResearching)
-        } else {
+        } else if self.can_afford_upgrade(upgrade) {
             let researcher = self
                 .units
                 .my
                 .all
                 .iter()
                 .of_type(researcher)
-                .ready()
                 .idle()
-                .next()
+                .find(|u| u.has_ability(ability))
                 .ok_or(BuildError::NoTrainer)?;
 
-            if self.can_afford_upgrade(upgrade) {
-                researcher.use_ability(ability, true);
-                Ok(())
-            } else {
-                Err(BuildError::CantAfford)
-            }
+            researcher.use_ability(ability, true);
+            Ok(())
+        } else {
+            Err(BuildError::CantAfford)
         }
     }
 }
