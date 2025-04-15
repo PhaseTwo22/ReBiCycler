@@ -54,6 +54,7 @@ impl Player for ReBiCycler {
 
         if frame_no % 1000 == 0 {
             self.map_siting(frame_no);
+            self.map_worker_activity(frame_no);
         }
 
         Ok(())
@@ -111,9 +112,7 @@ impl ReBiCycler {
         }
 
         for worker in &self.units.my.workers.clone() {
-            if self.back_to_work(worker).is_err() {
-                self.log_error("No bases at game start?!".to_string());
-            }
+            self.back_to_work(worker.tag());
         }
 
         let initial_slotting = self
@@ -143,7 +142,11 @@ impl ReBiCycler {
             };
             if crate::is_assimilator(unit_details.type_id) {
                 if self.siting_director.lose_assimilator(unit_tag).is_err() {
-                    println!("We couldn't find the assimilator to destroy");
+                    self.log_error("We couldn't find the assimilator to destroy".to_string());
+                }
+                let unemployed = self.mining_manager.remove_resource(unit_tag.tag);
+                for worker_tag in &unemployed {
+                    self.back_to_work(*worker_tag);
                 }
             } else if crate::is_protoss_building(&unit_details.type_id) {
                 if let Err(e) = self.siting_director.find_and_destroy_building(&unit_tag) {
@@ -159,19 +162,17 @@ impl ReBiCycler {
                         false,
                     );
                 }
+                if unit_details.type_id == UnitTypeId::Nexus {
+                    let unemployed = self.mining_manager.remove_townhall(unit_tag.tag);
+                    for unit in unemployed {
+                        self.back_to_work(unit);
+                    }
+                }
             } else if crate::is_minerals(unit_details.type_id) {
-                let unemployed: Vec<Unit> = self
-                    .mining_manager
-                    .remove_resource(unit_tag.tag)
-                    .into_iter()
-                    .filter_map(|u| self.units.my.workers.get(u))
-                    .cloned()
-                    .collect();
+                let unemployed = self.mining_manager.remove_resource(unit_tag.tag);
 
                 for unit in unemployed {
-                    if let Err(e) = self.back_to_work(&unit.clone()) {
-                        self.log_error(format!("{e:?}"));
-                    }
+                    self.back_to_work(unit);
                 }
             } else if unit_tag.unit_type == UnitTypeId::Probe
                 && self.mining_manager.remove_miner(unit_tag.tag)
@@ -183,9 +184,7 @@ impl ReBiCycler {
     fn create_unit(&mut self, unit_tag: u64) {
         if let Some(unit) = self.units.my.units.get(unit_tag).cloned() {
             if unit.type_id() == UnitTypeId::Probe && self.game_started {
-                if let Err(e) = self.back_to_work(&unit) {
-                    self.log_error(format!("Unable to assign new probe to a nexus? {e:?}"));
-                }
+                self.back_to_work(unit_tag);
             }
         } else {
             self.log_error(format!("UnitCreated but unit not found! {unit_tag}"));
