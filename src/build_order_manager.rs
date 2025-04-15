@@ -9,13 +9,6 @@ use crate::{
     protoss_bot::ReBiCycler,
 };
 
-/// This module serves to manage our build orders.
-/// We want to use kiss principle here, but still have a flexible system.
-///
-/// A build order is made of components, each with a condition and an action.
-/// It also contains policies, which are a set of actions that are executed until a condition is met.
-/// Policies can be active and inactive.
-
 #[derive(Default)]
 pub struct BuildOrder(pub Vec<BuildOrderComponent>);
 

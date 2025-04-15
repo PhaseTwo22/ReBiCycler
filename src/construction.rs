@@ -62,5 +62,17 @@ impl ReBiCycler {
         {
             println!("No slot for new building: {e:?}");
         }
+
+        let _: () = self
+            .units
+            .my
+            .workers
+            .idle()
+            .iter()
+            .map(|worker| {
+                self.back_to_work(worker.tag());
+                println!("BACK TO WORK!");
+            })
+            .collect();
     }
 }

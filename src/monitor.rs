@@ -81,7 +81,7 @@ impl ReBiCycler {
                 if ability.is_none() {
                     String::new()
                 } else {
-                    format!(": {:.0}", progress * 100.0)
+                    format!(": {:.0}%", progress * 100.0)
                 },
             );
             lines.push(out);
@@ -126,7 +126,7 @@ impl ReBiCycler {
 
     fn format_production(producing: &mut Vec<(String, String, String, String)>) -> Vec<String> {
         let mut out = Vec::new();
-        let same_sep = " - ";
+        let same_sep = "- ";
         producing.sort();
         let mut active_structure = String::new();
 

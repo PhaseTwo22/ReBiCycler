@@ -20,7 +20,11 @@ pub struct MinerManager {
     assets: Units,
     priority: ResourceType,
 }
-
+impl Debug for MinerManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.resource_assignment_counts.values())
+    }
+}
 impl Display for MinerManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let minerals = self.assets.iter().filter(|u| u.is_mineral()).count();
@@ -106,8 +110,12 @@ impl MinerManager {
         }
         self.micro_miners(units);
     }
-    pub fn assign_miner(&mut self, miner: &Unit) -> Result<(), MiningError> {
-        self.employ_miner(miner.tag())
+    pub fn assign_miner(&mut self, miner: u64) -> Result<(), MiningError> {
+        self.employ_miner(miner)
+    }
+
+    pub fn employed_miners(&self) -> impl Iterator<Item = &u64> {
+        self.miners.keys()
     }
 
     pub fn available_jobs(&self) -> usize {
@@ -178,10 +186,10 @@ impl MinerManager {
         let job = self.find_job().transpose();
         if let Some(maybe_error) = job {
             let new_job = maybe_error?;
-            self.resource_assignment_counts
+            *self
+                .resource_assignment_counts
                 .entry(new_job.resource.tag())
-                .and_modify(|c| *c += 1)
-                .or_insert(1);
+                .or_insert(0) += 1;
 
             self.miners.insert(miner, (new_job, MinerMicroState::Idle));
             Ok(())
@@ -368,8 +376,7 @@ mod tests {
     use super::*;
 
     fn init_miner() -> MinerManager {
-        let mut mm = MinerManager::default();
-        mm
+        MinerManager::default()
     }
 
     #[test]
