@@ -8,6 +8,8 @@ use std::{
 use console::{measure_text_width, strip_ansi_codes, truncate_str, Term};
 use itertools::Itertools;
 
+const STANDARD_TAIL: &str = "…";
+
 struct Pane {
     name: String,
     width: usize,
@@ -32,7 +34,7 @@ impl fmt::Display for Pane {
         let nice = std::iter::once(&self.name)
             .chain(self.content.iter())
             .chain(padding.iter())
-            .map(|s| self.correct_length(s, "…"))
+            .map(|s| self.correct_length(s, STANDARD_TAIL))
             .join("\n");
         write!(f, "{nice}")
     }
@@ -49,7 +51,7 @@ impl Pane {
     }
     pub fn add_line(&mut self, message: &str, trunc: bool) {
         let out = if trunc {
-            self.correct_length(message, "…")
+            self.correct_length(message, STANDARD_TAIL)
         } else {
             message.to_string()
         };
@@ -179,11 +181,11 @@ impl Default for DisplayTerminal {
     fn default() -> Self {
         let pane_template = [
             ("Production".to_owned(), 20),
-            ("Construction".to_owned(), 25),
-            ("Research".to_owned(), 25),
-            ("Army".to_owned(), 20),
+            ("Construction".to_owned(), 20),
+            ("Research".to_owned(), 15),
+            ("Army".to_owned(), 15),
             ("Build Order".to_owned(), 25),
-            ("Errors".to_owned(), 60),
+            ("Errors".to_owned(), 50),
         ];
         let multi_width = pane_template.iter().map(|(_, width)| width).sum();
         Self {
