@@ -1,4 +1,4 @@
-use rust_sc2::ids::UnitTypeId;
+use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
 
 use crate::{protoss_bot::ReBiCycler, Tag};
 
@@ -10,12 +10,28 @@ impl ReBiCycler {
         };
         let building = building.clone();
         if let Err(e) = self.siting_director.finish_construction(&building) {
-            println!("Error finishing building: {e:?}");
+            self.log_error(format!("Error finishing building: {e:?}"));
         };
 
         if building.type_id() == UnitTypeId::Nexus {
             if let Err(e) = self.new_base_finished(&building.clone()) {
-                println!("Can't add to Mining Manager: {e:?}");
+                self.log_error(format!("Can't add nexus to Mining Manager: {e:?}"));
+            }
+            let minerals: Vec<Unit> = self
+                .units
+                .mineral_fields
+                .iter()
+                .closer(10.0, building)
+                .cloned()
+                .collect();
+            let mut issues = Vec::new();
+            for mineral in minerals {
+                if let Err(e) = self.mining_manager.add_resource(mineral) {
+                    issues.push(format!("Can't add mineral to Mining Manager: {e:?}"));
+                }
+            }
+            for iss in issues {
+                self.log_error(iss);
             }
         } else if building.type_id() == UnitTypeId::Pylon {
             self.update_building_power(UnitTypeId::Pylon, building.position(), true);

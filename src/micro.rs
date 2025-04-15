@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{errors::MicroError, Tag};
 use rust_sc2::prelude::*;
@@ -19,6 +19,31 @@ pub struct MinerManager {
     resource_assignment_counts: HashMap<u64, usize>,
     assets: Units,
     priority: ResourceType,
+}
+
+impl Display for MinerManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let minerals = self.assets.iter().filter(|u| u.is_mineral()).count();
+        let gasses = self
+            .assets
+            .iter()
+            .filter(|u| u.vespene_contents().unwrap_or(0) > 0)
+            .count();
+        let mineral_assignments = self
+            .miners
+            .values()
+            .filter(|(assignment, _)| assignment.resource.is_mineral())
+            .count();
+        let gas_assignments = self
+            .miners
+            .values()
+            .filter(|(assignment, _)| assignment.resource.vespene_contents().is_some())
+            .count();
+        write!(
+            f,
+            "Patches: {minerals}:{mineral_assignments} | Gasses: {gasses}:{gas_assignments}"
+        )
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -153,9 +178,12 @@ impl MinerManager {
         let job = self.find_job().transpose();
         if let Some(maybe_error) = job {
             let new_job = maybe_error?;
+            self.resource_assignment_counts
+                .entry(new_job.resource.tag())
+                .and_modify(|c| *c += 1)
+                .or_insert(1);
+
             self.miners.insert(miner, (new_job, MinerMicroState::Idle));
-            let count = self.resource_assignment_counts.get(&miner).unwrap_or(&0);
-            self.resource_assignment_counts.insert(miner, count + 1);
             Ok(())
         } else {
             Err(MiningError::NoResources)
@@ -164,7 +192,10 @@ impl MinerManager {
 
     fn find_job(&self) -> Result<Option<MinerAssignment>, MiningError> {
         let minerals = self.assets.iter().filter(|u| u.is_mineral());
-        let gasses = self.assets.iter().filter(|u| u.is_geyser());
+        let gasses = self
+            .assets
+            .iter()
+            .filter(|u| u.vespene_contents().is_some());
         let find_order: Vec<&Unit> = {
             match self.priority {
                 ResourceType::Gas => gasses.chain(minerals).collect(),
@@ -193,7 +224,7 @@ impl MinerManager {
     ) -> Result<Option<MinerAssignment>, MiningError> {
         let job = {
             let harvesters: u32 = if resource.is_mineral() { 2 } else { 3 };
-            if count <= harvesters as usize {
+            if count < harvesters as usize {
                 let nearest_townhall = self
                     .assets
                     .iter()
@@ -329,5 +360,22 @@ fn worker_update(
                 .towards(unit.position(), RETURN_CARGO_DISTANCE),
         ),
         _ => MinerMicroState::ReturnCargo,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn init_miner() -> MinerManager {
+        let mut mm = MinerManager::default();
+        mm
+    }
+
+    #[test]
+    fn add_worker_to_empty_manager() {
+        let mut mm = init_miner();
+
+        assert!(mm.employ_miner(1).is_err());
     }
 }

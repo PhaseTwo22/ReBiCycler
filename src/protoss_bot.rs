@@ -176,7 +176,6 @@ impl ReBiCycler {
             } else if unit_tag.unit_type == UnitTypeId::Probe
                 && self.mining_manager.remove_miner(unit_tag.tag)
             {
-                println!("Dead worker was mining");
             }
         }
     }

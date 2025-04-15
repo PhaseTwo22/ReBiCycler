@@ -1,5 +1,5 @@
 use rust_sc2::prelude::*;
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug, hash::Hash};
 mod base_manager;
 mod build_order_manager;
 mod build_orders;
@@ -207,4 +207,21 @@ const fn ability_produces(ability: AbilityId) -> UnitTypeId {
         AbilityId::StargateTrainCarrier => UnitTypeId::Carrier,
         _ => UnitTypeId::NotAUnit,
     }
+}
+
+#[must_use] pub fn count_unit_types(units: &Units) -> HashMap<UnitTypeId, usize> {
+    let mut counts: HashMap<UnitTypeId, usize> = HashMap::new();
+    let _: () = units
+        .iter()
+        .map(|u| increment_map(&mut counts, u.type_id()))
+        .collect();
+    counts
+}
+
+fn increment_map<T>(map: &mut HashMap<T, usize>, key: T)
+where
+    T: Hash + Eq,
+{
+    let new_count = map.get(&key).unwrap_or(&0) + 1;
+    map.insert(key, new_count);
 }

@@ -2,10 +2,8 @@ use crate::protoss_bot::ReBiCycler;
 
 use itertools::Itertools;
 use rust_sc2::ids::{BuffId, UpgradeId};
-use rust_sc2::{ids::AbilityId, prelude::UnitTypeId, units::Units};
+use rust_sc2::{ids::AbilityId, prelude::UnitTypeId};
 use std::collections::HashMap;
-
-use std::hash::Hash;
 
 const ARMOR_ICON: &str = "🛡️";
 const WEAPONS_ICON: &str = "🔪";
@@ -35,6 +33,7 @@ impl ReBiCycler {
         self.display_build_order();
 
         self.production_tab();
+        self.show_mining();
         self.show_chronos();
 
         self.army_composition();
@@ -118,6 +117,11 @@ impl ReBiCycler {
             self.display_terminal
                 .write_line_to_pane("Production", &line, false);
         }
+    }
+
+    fn show_mining(&mut self) {
+        self.display_terminal
+            .write_line_to_header(&self.mining_manager.to_string());
     }
 
     fn format_production(producing: &mut Vec<(String, String, String, String)>) -> Vec<String> {
@@ -322,7 +326,7 @@ impl ReBiCycler {
         self.display_terminal
             .write_line_to_pane("Army", &msg, false);
 
-        for (unit, count) in Self::count_unit_types(&army) {
+        for (unit, count) in crate::count_unit_types(&army) {
             let out = format!("- {unit:?}: {count}");
             self.display_terminal
                 .write_line_to_pane("Army", &out, false);
@@ -355,7 +359,7 @@ impl ReBiCycler {
         self.display_terminal
             .write_line_to_pane("Construction", "Finished:", false);
         for (unit_type, count) in
-            Self::count_unit_types(&self.units.my.structures.filter(|u| u.is_ready()))
+            crate::count_unit_types(&self.units.my.structures.filter(|u| u.is_ready()))
         {
             self.display_terminal.write_line_to_pane(
                 "Construction",
@@ -363,15 +367,6 @@ impl ReBiCycler {
                 false,
             );
         }
-    }
-
-    fn count_unit_types(units: &Units) -> HashMap<UnitTypeId, usize> {
-        let mut counts: HashMap<UnitTypeId, usize> = HashMap::new();
-        let _: () = units
-            .iter()
-            .map(|u| increment_map(&mut counts, u.type_id()))
-            .collect();
-        counts
     }
 
     fn show_available_techs(&mut self) {
@@ -403,33 +398,5 @@ impl ReBiCycler {
                 set.push(coords);
             }
         }
-        self.display_terminal
-            .write_line_to_footer("building centers:");
-        for coord in set {
-            self.display_terminal
-                .write_line_to_footer(&format!("- {coord:?}"));
-        }
-
-        let mut set = Vec::new();
-        for (point, building) in self.siting_director.iter() {
-            let coords = (building.size(), point.x % 1.0, point.y % 1.0);
-            if !set.contains(&coords) {
-                set.push(coords);
-            }
-        }
-        self.display_terminal
-            .write_line_to_footer("siting centers:");
-        for coord in set {
-            self.display_terminal
-                .write_line_to_footer(&format!("- {coord:?}"));
-        }
     }
-}
-
-fn increment_map<T>(map: &mut HashMap<T, usize>, key: T)
-where
-    T: Hash + Eq,
-{
-    let new_count = map.get(&key).unwrap_or(&0) + 1;
-    map.insert(key, new_count);
 }
