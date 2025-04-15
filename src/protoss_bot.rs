@@ -52,6 +52,10 @@ impl Player for ReBiCycler {
             self.monitor(frame_no);
         };
 
+        if frame_no % 1000 == 0 {
+            self.map_siting(frame_no);
+        }
+
         Ok(())
     }
 
@@ -191,7 +195,7 @@ impl ReBiCycler {
         }
     }
 
-    fn unhandle_unhandle(&mut self, uhe: UnhandledError) {
+    pub fn unhandle_unhandle(&mut self, uhe: UnhandledError) {
         self.display_terminal
             .write_line_to_pane("Errors", &uhe, true);
     }

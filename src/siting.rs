@@ -2,8 +2,7 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{self, Debug, Display},
-    iter::{once, zip},
-    usize,
+    iter::once,
 };
 
 use crate::{
@@ -12,6 +11,7 @@ use crate::{
     protoss_bot::ReBiCycler,
     Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
+use image::Rgba;
 use itertools::{iproduct, Either};
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
 
@@ -230,17 +230,17 @@ impl BuildingLocation {
         }
     }
 
-    pub fn color(&self) -> &str {
-        match self.status {
-            BuildingStatus::Free(_, PylonPower::Powered) => "green",
-            BuildingStatus::Free(_, PylonPower::Depowered) => "yellow",
-            BuildingStatus::Built(_, PylonPower::Depowered) => "dark blue",
-            BuildingStatus::Built(_, PylonPower::Powered) => "blue",
-            BuildingStatus::Constructing(_, PylonPower::Depowered) => "light blue",
-            BuildingStatus::Constructing(_, PylonPower::Powered) => "blue",
-            BuildingStatus::Blocked(_, PylonPower::Depowered) => "dark red",
-            BuildingStatus::Blocked(_, PylonPower::Powered) => "red",
-        }
+    pub const fn color(&self, a: u8) -> Rgba<u8> {
+        Rgba(match self.status {
+            BuildingStatus::Free(_, PylonPower::Powered) => [0, 128, 0, a], //"green",
+            BuildingStatus::Free(_, PylonPower::Depowered) => [255, 255, 0, a], //"yellow",
+            BuildingStatus::Built(_, PylonPower::Depowered) => [0, 0, 205, a], //"dark blue",
+            BuildingStatus::Built(_, PylonPower::Powered) => [0, 0, 255, a], //"blue",
+            BuildingStatus::Constructing(_, PylonPower::Depowered) => [135, 206, 250, a], //"light blue",
+            BuildingStatus::Constructing(_, PylonPower::Powered) => [70, 130, 180, a],    //"blue",
+            BuildingStatus::Blocked(_, PylonPower::Depowered) => [124, 72, 72, a], //"dark red",
+            BuildingStatus::Blocked(_, PylonPower::Powered) => [139, 0, 0, a],     //"red",
+        })
     }
 
     /// Gets a `UnitTypeId` to use to evaluate whether or not we can place something here
@@ -403,8 +403,8 @@ impl SlotSize {
             Self::Townhall => UnitTypeId::Nexus,
         }
     }
-    pub fn contained_points(&self, center: &Point2) -> impl Iterator<Item = (usize, usize)> {
-        let bottom_left = (center.offset(-self.radius(), -self.radius()));
+    pub fn contained_points(&self, center: &Point2) -> impl Iterator<Item = (u32, u32)> {
+        let bottom_left = center.offset(-self.radius(), -self.radius());
 
         let range = match self {
             Self::Tumor => todo!(),
@@ -414,7 +414,7 @@ impl SlotSize {
         };
         let offsets = iproduct!(range.clone(), range);
 
-        offsets.map(move |(x, y)| (bottom_left.x as usize + x, bottom_left.y as usize + y))
+        offsets.map(move |(x, y)| (bottom_left.x as u32 + x, bottom_left.y as u32 + y))
     }
 }
 
