@@ -210,9 +210,9 @@ pub fn four_base_charge() -> BuildOrder {
             state: ComponentState::NotYetStarted,
         },
         Component {
-            name: "Probe to 44".to_string(),
+            name: "Probe to 40".to_string(),
             start_conditions: vec![AtLeastCount(UnitTypeId::Pylon, 1)],
-            end_conditions: vec![AtLeastCount(UnitTypeId::Probe, 44)],
+            end_conditions: vec![AtLeastCount(UnitTypeId::Probe, 40)],
             action: Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe),
             state: ComponentState::NotYetStarted,
         },
@@ -224,6 +224,16 @@ pub fn four_base_charge() -> BuildOrder {
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::Nexus, 2)],
             action: Expand,
+            state: ComponentState::NotYetStarted,
+        },
+        Component {
+            name: "Up to 4 gasses".to_string(),
+            start_conditions: vec![
+                AtLeastCount(UnitTypeId::Pylon, 2),
+                AtLeastCount(UnitTypeId::Nexus, 2),
+            ],
+            end_conditions: vec![AtLeastCount(UnitTypeId::Assimilator, 4)],
+            action: Construct(UnitTypeId::Assimilator),
             state: ComponentState::NotYetStarted,
         },
     ];
