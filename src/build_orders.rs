@@ -126,7 +126,7 @@ pub fn four_base_charge() -> BuildOrder {
     let mut surrender = vec![Component::new(
         "surrender",
         &[SupplyBetween(0, 1), LessThanCount(UnitTypeId::Nexus, 1)],
-        &[],
+        &[Never],
         Surrender,
     )];
     let mut rebuild_from_nothing = vec![

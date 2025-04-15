@@ -137,11 +137,10 @@ impl GasLocation {
                 Ok(S::Free(intent, power))
             }
 
-            (T::UnObstruct, _)
-            | (T::Finish | T::Destroy, S::Free(_, _))
-            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
-            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
-            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+            (T::UnObstruct | T::Morph(_), _) | (T::Finish | T::Destroy, S::Free(_, _)) |
+(T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) |
+(T::Obstruct | T::Construct(_), S::Constructing(_, _)) |
+(T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
                 Err(BuildingTransitionError::InvalidTransition {
                     from: self.status.clone(),
                     change: transition,
@@ -168,6 +167,7 @@ pub enum BuildingTransition {
     RePower,
     Construct(Tag),
     Finish,
+    Morph(UnitTypeId),
 }
 
 const PYLON_DISTANCE_FROM_NEXUS: f32 = 9.0;
@@ -300,12 +300,18 @@ impl BuildingLocation {
             (T::UnObstruct, S::Blocked(intent, power) | S::Free(intent, power)) => {
                 Ok(S::Free(intent, power))
             }
+            (T::Morph(new_type), S::Built(tag, power)) => Ok(S::Built(
+                Tag {
+                    tag: tag.tag,
+                    unit_type: new_type,
+                },
+                power,
+            )),
 
-            (T::UnObstruct, _)
-            | (T::Finish | T::Destroy, S::Free(_, _))
-            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
-            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
-            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+            (T::UnObstruct | T::Morph(_), _) | (T::Finish | T::Destroy, S::Free(_, _)) |
+(T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) |
+(T::Obstruct | T::Construct(_), S::Constructing(_, _)) |
+(T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
                 Err(BuildingTransitionError::InvalidTransition {
                     from: self.status.clone(),
                     change: transition,
@@ -342,8 +348,8 @@ impl BuildingLocation {
         let my_radius = self.size.radius();
         [
             self.location + (Point2::new(1.0, 1.0) * my_radius),
-            self.location + (Point2::new(-1.0, -1.0) * my_radius),
             self.location + (Point2::new(-1.0, 1.0) * my_radius),
+            self.location + (Point2::new(-1.0, -1.0) * my_radius),
             self.location + (Point2::new(1.0, -1.0) * my_radius),
         ]
     }
@@ -648,6 +654,18 @@ impl SitingDirector {
         offsets.iter().flat_map(rotato).collect()
     }
 
+    fn mirror_to_four_quadrants(offsets: &[Point2]) -> Vec<Point2> {
+        let flippify = |point: &Point2| {
+            let (x, y) = point.as_tuple();
+            vec![(x, y), (-x, y), (-x, -y), (x, -y)]
+        };
+        offsets
+            .iter()
+            .flat_map(flippify)
+            .map(|(x, y)| Point2::new(x, y))
+            .collect()
+    }
+
     pub fn pylon_flower(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
         let pylon_width = SlotSize::Small.width();
@@ -667,24 +685,25 @@ impl SitingDirector {
             .collect()
     }
 
-    pub fn pylon_blossom(center_point: Point2) -> Vec<BuildingLocation> {
+    pub fn pylon_interceptor(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
         let pylon_width = SlotSize::Small.width();
         let standard_radius = SlotSize::Standard.radius();
         let standard_width = SlotSize::Standard.width();
 
-        let right_and_up = vec![
+        let l_shape_to_the_right = vec![
+            Point2::new(pylon_radius + standard_radius, standard_radius),
             Point2::new(
-                pylon_radius + standard_radius,
-                standard_radius - pylon_width,
+                pylon_radius + standard_radius + standard_width,
+                standard_radius,
             ),
             Point2::new(
                 pylon_radius + standard_radius,
-                standard_radius - pylon_width + standard_width,
+                standard_radius + standard_width,
             ),
         ];
 
-        Self::rotate_to_four_quadrants(&right_and_up)
+        Self::mirror_to_four_quadrants(&l_shape_to_the_right)
             .iter()
             .map(|point| BuildingLocation::standard(center_point + *point))
             .chain(vec![BuildingLocation::pylon(center_point)])
@@ -692,7 +711,7 @@ impl SitingDirector {
     }
 
     pub fn add_pylon_site(&mut self, location: Point2) {
-        for bl in Self::pylon_blossom(location) {
+        for bl in Self::pylon_interceptor(location) {
             self.building_locations.insert(bl.location, bl);
         }
     }
@@ -915,9 +934,44 @@ impl ReBiCycler {
 
 #[cfg(test)]
 mod tests {
+    
+
     use super::*;
 
     const ORIGIN: Point2 = Point2 { x: 0.0, y: 0.0 };
+    #[test]
+    fn corners_ok() {
+        let small = BuildingLocation::pylon(ORIGIN);
+        assert_eq!(
+            small.get_two_corners(),
+            (Point2::new(1.0, 1.0), Point2::new(-1.0, -1.0))
+        );
+        assert_eq!(
+            small.get_four_corners(),
+            [
+                Point2::new(1.0, 1.0),
+                Point2::new(-1.0, 1.0),
+                Point2::new(-1.0, -1.0),
+                Point2::new(1.0, -1.0)
+            ]
+        );
+
+        let standard = BuildingLocation::standard(ORIGIN);
+        assert_eq!(
+            standard.get_two_corners(),
+            (Point2::new(1.5, 1.5), Point2::new(-1.5, -1.5))
+        );
+        assert_eq!(
+            standard.get_four_corners(),
+            [
+                Point2::new(1.5, 1.5),
+                Point2::new(-1.5, 1.5),
+                Point2::new(-1.5, -1.5),
+                Point2::new(1.5, -1.5)
+            ]
+        );
+    }
+
     #[test]
     fn intersect_ok() {
         let origin = Point2::new(0.0, 0.0);
@@ -928,7 +982,21 @@ mod tests {
         assert!(!bl1.intersects_other(&bl2));
 
         let bl3 = BuildingLocation::new(origin, SlotSize::Standard, None);
-        let bl4 = BuildingLocation::new(origin, SlotSize::Standard, None);
+        let bl4 = BuildingLocation::new(two_over, SlotSize::Standard, None);
+
+        assert_eq!(bl3.get_four_corners(), bl4.get_four_corners());
+
+        assert!(bl3.intersects_other(&bl4));
+
+        let origin = Point2::new(0.0, 0.0);
+        let two_up = Point2::new(0.0, 2.0);
+        let bl1 = BuildingLocation::new(origin, SlotSize::Small, None);
+        let bl2 = BuildingLocation::new(two_up, SlotSize::Small, None);
+
+        assert!(!bl1.intersects_other(&bl2));
+
+        let bl3 = BuildingLocation::new(origin, SlotSize::Standard, None);
+        let bl4 = BuildingLocation::new(two_up, SlotSize::Standard, None);
 
         assert!(bl3.intersects_other(&bl4));
     }
@@ -966,7 +1034,7 @@ mod tests {
     #[test]
     fn pylon_blossom_doesnt_self_intersect() {
         let origin = Point2::new(0.0, 0.0);
-        let buildings = SitingDirector::pylon_blossom(origin);
+        let buildings = SitingDirector::pylon_interceptor(origin);
 
         assert!(!buildings_intersect(&buildings));
     }
@@ -1010,5 +1078,50 @@ mod tests {
             .unwrap();
 
         assert!(gate_location.could_build());
+    }
+
+    #[test]
+    fn point_containers_ok() {
+        let pylon_location = BuildingLocation::pylon(ORIGIN);
+        let points: Vec<(u32, u32)> = pylon_location.size().contained_points(&ORIGIN).collect();
+        assert_eq!(points, vec![(0, 0), (0, 1), (1, 0), (1, 1)]);
+
+        let gate_location = BuildingLocation::standard(Point2::new(1.5, 1.5));
+        let gate_points: Vec<(u32, u32)> = gate_location
+            .size()
+            .contained_points(&gate_location.location)
+            .collect();
+        assert_eq!(
+            gate_points,
+            vec![
+                (0, 0),
+                (0, 1),
+                (0, 2),
+                (1, 0),
+                (1, 1),
+                (1, 2),
+                (2, 0),
+                (2, 1),
+                (2, 2)
+            ]
+        );
+    }
+
+    #[test]
+    fn pylon_interceptor_points_ok() {
+        let pattern = SitingDirector::pylon_interceptor(Point2::new(20.0, 20.0));
+        let mut touch_counts: HashMap<(u32, u32), usize> = HashMap::new();
+
+        for bl in pattern {
+            let contained_points = bl.size().contained_points(&bl.location);
+            for (x, y) in contained_points {
+                let current_count = touch_counts
+                    .entry((x, y))
+                    .and_modify(|count| *count += 1)
+                    .or_insert(1);
+            }
+        }
+        touch_counts.retain(|k, v| v > &mut 1);
+        assert!(touch_counts.is_empty(), "{touch_counts:?}");
     }
 }

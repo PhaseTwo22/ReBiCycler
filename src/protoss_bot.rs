@@ -137,10 +137,6 @@ impl ReBiCycler {
         let knowledge = self.knowledge.unit_destroyed(tag);
 
         if let Ok(unit_details) = knowledge {
-            println!(
-                "Perished! {:?} {:?}",
-                unit_details.alliance, unit_details.type_id
-            );
             let unit_tag = Tag {
                 tag,
                 unit_type: unit_details.type_id,
