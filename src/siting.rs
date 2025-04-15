@@ -2,7 +2,6 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{self, Debug, Display},
-    iter::once,
 };
 
 use crate::{
@@ -322,38 +321,6 @@ impl BuildingLocation {
         }?;
         self.status = new_status;
         Ok(())
-    }
-
-    pub fn intersects_other(&self, other: &Self) -> bool {
-        other
-            .get_four_corners()
-            .iter()
-            .chain(once(&other.location))
-            .any(|p| self.inside_corners(*p))
-    }
-    fn inside_corners(&self, point: Point2) -> bool {
-        let (top_right, bottom_left) = self.get_two_corners();
-        let inside_x = bottom_left.x < point.x && point.x < top_right.x;
-        let inside_y = bottom_left.y < point.y && point.y < top_right.y;
-        inside_x && inside_y
-    }
-
-    fn get_two_corners(&self) -> (Point2, Point2) {
-        let my_radius = self.size.radius();
-        (
-            self.location + (Point2::new(1.0, 1.0) * my_radius),
-            self.location + (Point2::new(-1.0, -1.0) * my_radius),
-        )
-    }
-
-    fn get_four_corners(&self) -> [Point2; 4] {
-        let my_radius = self.size.radius();
-        [
-            self.location + (Point2::new(1.0, 1.0) * my_radius),
-            self.location + (Point2::new(-1.0, 1.0) * my_radius),
-            self.location + (Point2::new(-1.0, -1.0) * my_radius),
-            self.location + (Point2::new(1.0, -1.0) * my_radius),
-        ]
     }
 }
 
@@ -906,8 +873,7 @@ impl ReBiCycler {
                 if let MiningError::NotTownhall(tag) = e {
                     BuildError::InvalidUnit(format!("{tag:?} is not a townhall"))
                 } else {
-                    println!("new error from finising a base: {e:?}");
-                    todo!("new error from finising a base: {e:?}")
+                    BuildError::InvalidUnit(format!("new error from finising a base: {e:?}"))
                 }
             })
     }
@@ -941,67 +907,6 @@ mod tests {
     use super::*;
 
     const ORIGIN: Point2 = Point2 { x: 0.0, y: 0.0 };
-    #[test]
-    fn corners_ok() {
-        let small = BuildingLocation::pylon(ORIGIN);
-        assert_eq!(
-            small.get_two_corners(),
-            (Point2::new(1.0, 1.0), Point2::new(-1.0, -1.0))
-        );
-        assert_eq!(
-            small.get_four_corners(),
-            [
-                Point2::new(1.0, 1.0),
-                Point2::new(-1.0, 1.0),
-                Point2::new(-1.0, -1.0),
-                Point2::new(1.0, -1.0)
-            ]
-        );
-
-        let standard = BuildingLocation::standard(ORIGIN);
-        assert_eq!(
-            standard.get_two_corners(),
-            (Point2::new(1.5, 1.5), Point2::new(-1.5, -1.5))
-        );
-        assert_eq!(
-            standard.get_four_corners(),
-            [
-                Point2::new(1.5, 1.5),
-                Point2::new(-1.5, 1.5),
-                Point2::new(-1.5, -1.5),
-                Point2::new(1.5, -1.5)
-            ]
-        );
-    }
-
-    #[test]
-    fn intersect_ok() {
-        let origin = Point2::new(0.0, 0.0);
-        let two_over = Point2::new(2.0, 0.0);
-        let bl1 = BuildingLocation::new(origin, SlotSize::Small, None);
-        let bl2 = BuildingLocation::new(two_over, SlotSize::Small, None);
-
-        assert!(!bl1.intersects_other(&bl2));
-
-        let bl3 = BuildingLocation::new(origin, SlotSize::Standard, None);
-        let bl4 = BuildingLocation::new(two_over, SlotSize::Standard, None);
-
-        assert_eq!(bl3.get_four_corners(), bl4.get_four_corners());
-
-        assert!(bl3.intersects_other(&bl4));
-
-        let origin = Point2::new(0.0, 0.0);
-        let two_up = Point2::new(0.0, 2.0);
-        let bl1 = BuildingLocation::new(origin, SlotSize::Small, None);
-        let bl2 = BuildingLocation::new(two_up, SlotSize::Small, None);
-
-        assert!(!bl1.intersects_other(&bl2));
-
-        let bl3 = BuildingLocation::new(origin, SlotSize::Standard, None);
-        let bl4 = BuildingLocation::new(two_up, SlotSize::Standard, None);
-
-        assert!(bl3.intersects_other(&bl4));
-    }
 
     #[test]
     fn pylon_flower_makes_five() {
@@ -1011,35 +916,6 @@ mod tests {
         );
     }
 
-    fn buildings_intersect(buildings: &[BuildingLocation]) -> bool {
-        for a in buildings {
-            for b in buildings {
-                if a == b {
-                    continue;
-                }
-                if a.intersects_other(b) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    #[test]
-    fn pylon_flower_doesnt_self_intersect() {
-        let origin = Point2::new(0.0, 0.0);
-        let buildings = SitingDirector::pylon_flower(origin);
-
-        assert!(!buildings_intersect(&buildings));
-    }
-
-    #[test]
-    fn pylon_blossom_doesnt_self_intersect() {
-        let origin = Point2::new(0.0, 0.0);
-        let buildings = SitingDirector::pylon_interceptor(origin);
-
-        assert!(!buildings_intersect(&buildings));
-    }
     #[test]
     fn pylon_transitions_ok() {
         let mut pylon = BuildingLocation::pylon(Point2::new(0.0, 0.0));

@@ -1,5 +1,5 @@
-use image::{ImageBuffer, Rgba, RgbaImage};
-use rust_sc2::{geometry::Size, pixel_map::Pixel};
+use image::{ImageBuffer, Pixel as ImagePixel, Rgba, RgbaImage};
+use rust_sc2::{geometry::Size, pixel_map::Pixel as MapPixel};
 
 use crate::protoss_bot::ReBiCycler;
 
@@ -12,7 +12,7 @@ impl ReBiCycler {
             let color = bl.color(200);
             for (x, y) in contained_points {
                 if point_within_image(&self.game_info.map_size, (x, y)) {
-                    image.put_pixel(x, y, color);
+                    image.get_pixel_mut(x, y).blend(&color);
                 };
             }
         }
@@ -31,8 +31,8 @@ impl ReBiCycler {
         for (i, val) in grid.iter().enumerate() {
             let (x, y) = ((i / grid.dim().1) as u32, (i % grid.dim().0) as u32);
             let color = Rgba(match val {
-                Pixel::Set => [0, 0, 0, a],
-                Pixel::Empty => [50, 50, 50, a],
+                MapPixel::Set => [0, 0, 0, a],
+                MapPixel::Empty => [50, 50, 50, a],
             });
             image.put_pixel(x, y, color);
         }
