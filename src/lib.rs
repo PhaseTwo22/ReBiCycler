@@ -6,10 +6,10 @@ mod build_orders;
 mod construction;
 mod errors;
 mod knowledge;
+mod map_viz;
 mod micro;
 mod monitor;
 pub mod protoss_bot;
-
 mod readout;
 mod siting;
 

@@ -149,7 +149,7 @@ impl ReBiCycler {
             BuildOrderAction::Train(unit_type, ability) => self.train(unit_type, ability),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(ability),
             BuildOrderAction::Research(upgrade, ability, researcher) => {
-                self.display_terminal.write_line_to_footer(format!(
+                self.display_terminal.write_line_to_footer(&format!(
                     "Attempting build action to {ability:?} for {upgrade:?}"
                 ));
                 self.research(upgrade, ability, researcher)
@@ -188,7 +188,7 @@ impl ReBiCycler {
         let error_part = err.map_either(|x| format!("{x:?}"), |y| format!("{y:?}"));
         let message = format!("Build error not yet handled: {action:?} from {error_part:?}");
         self.display_terminal
-            .write_line_to_pane("Errors", message, true);
+            .write_line_to_pane("Errors", &message, true);
     }
 
     fn train(&self, unit_type: UnitTypeId, ability: AbilityId) -> Result<(), BuildError> {

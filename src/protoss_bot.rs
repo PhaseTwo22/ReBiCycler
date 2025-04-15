@@ -193,6 +193,6 @@ impl ReBiCycler {
 
     fn unhandle_unhandle(&mut self, uhe: UnhandledError) {
         self.display_terminal
-            .write_line_to_pane("Errors", uhe, true);
+            .write_line_to_pane("Errors", &uhe, true);
     }
 }

@@ -47,20 +47,20 @@ impl Pane {
             content: Vec::new(),
         }
     }
-    pub fn add_line(&mut self, message: String, trunc: bool) {
+    pub fn add_line(&mut self, message: &str, trunc: bool) {
         let out = if trunc {
-            self.correct_length(&message, "…")
+            self.correct_length(message, "…")
         } else {
-            message
+            message.to_string()
         };
         self.content.push(out);
     }
 
-    pub fn add_line_wrapped(&mut self, message: String) {
-        let mut message = strip_ansi_codes(&message).to_string();
+    pub fn add_line_wrapped(&mut self, message: &str) {
+        let mut message = strip_ansi_codes(message).to_string();
         while !message.is_empty() {
             let (chunk, rest) = message.split_at(std::cmp::min(self.width, message.len()));
-            self.add_line(chunk.to_string(), false);
+            self.add_line(chunk, false);
             message = rest.to_string();
         }
     }
@@ -111,7 +111,7 @@ impl MultiPane {
         )
     }
 
-    pub fn write_line_to_pane(&mut self, pane_name: &str, line: String, wrapped: bool) {
+    pub fn write_line_to_pane(&mut self, pane_name: &str, line: &str, wrapped: bool) {
         let index = self.pane_names.get(pane_name).unwrap_or_else(|| {
             panic!(
                 "Display panel name not found: {}.\nOptions are: \n - {}",
@@ -221,15 +221,15 @@ impl DisplayTerminal {
         self.footer.clear();
     }
 
-    pub fn write_line_to_pane(&mut self, pane_name: &str, msg: String, wrapped: bool) {
+    pub fn write_line_to_pane(&mut self, pane_name: &str, msg: &str, wrapped: bool) {
         self.multi_pane.write_line_to_pane(pane_name, msg, wrapped);
     }
 
-    pub fn write_line_to_header(&mut self, msg: String) {
+    pub fn write_line_to_header(&mut self, msg: &str) {
         self.header.add_line(msg, true);
     }
 
-    pub fn write_line_to_footer(&mut self, msg: String) {
+    pub fn write_line_to_footer(&mut self, msg: &str) {
         self.footer.add_line(msg, true);
     }
 

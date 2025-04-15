@@ -60,10 +60,10 @@ impl ReBiCycler {
             "M: {} G: {} S:{}/{}",
             self.minerals, self.vespene, self.supply_used, self.supply_cap
         );
-        self.display_terminal.write_line_to_header(map);
-        self.display_terminal.write_line_to_header(header);
+        self.display_terminal.write_line_to_header(&map);
+        self.display_terminal.write_line_to_header(&header);
         self.display_terminal
-            .write_line_to_header(format!("{:?}", self.siting_director));
+            .write_line_to_header(&format!("{:?}", self.siting_director));
     }
 
     fn production_tab(&mut self) {
@@ -90,7 +90,7 @@ impl ReBiCycler {
         let formatted = Self::format_production(&mut lines);
         for line in formatted {
             self.display_terminal
-                .write_line_to_pane("Production", line, false);
+                .write_line_to_pane("Production", &line, false);
         }
     }
 
@@ -112,10 +112,10 @@ impl ReBiCycler {
         }
 
         self.display_terminal
-            .write_line_to_pane("Production", "Chrono's:".to_string(), false);
+            .write_line_to_pane("Production", "Chrono's:", false);
         for line in chronos {
             self.display_terminal
-                .write_line_to_pane("Production", line, false);
+                .write_line_to_pane("Production", &line, false);
         }
     }
 
@@ -181,7 +181,7 @@ impl ReBiCycler {
             let out = format!("{}{}", boc.name, icon);
 
             self.display_terminal
-                .write_line_to_pane("Build Order", out, true);
+                .write_line_to_pane("Build Order", &out, true);
         }
     }
 
@@ -208,7 +208,7 @@ impl ReBiCycler {
 
         for line in lines {
             self.display_terminal
-                .write_line_to_pane("Research", line, false);
+                .write_line_to_pane("Research", &line, false);
         }
     }
 
@@ -318,11 +318,13 @@ impl ReBiCycler {
             .supply_workers
             .saturating_sub(self.counter().ordered().count(UnitTypeId::Probe) as u32);
         let msg = format!("Workers: {existing_workers}");
-        self.display_terminal.write_line_to_pane("Army", msg, false);
+        self.display_terminal
+            .write_line_to_pane("Army", &msg, false);
 
         for (unit, count) in Self::count_unit_types(&army) {
             let out = format!("- {unit:?}: {count}");
-            self.display_terminal.write_line_to_pane("Army", out, false);
+            self.display_terminal
+                .write_line_to_pane("Army", &out, false);
         }
     }
 
@@ -344,19 +346,19 @@ impl ReBiCycler {
         }
         for line in out {
             self.display_terminal
-                .write_line_to_pane("Construction", line, false);
+                .write_line_to_pane("Construction", &line, false);
         }
     }
 
     fn display_structures(&mut self) {
         self.display_terminal
-            .write_line_to_pane("Construction", "Finished:".to_string(), false);
+            .write_line_to_pane("Construction", "Finished:", false);
         for (unit_type, count) in
             Self::count_unit_types(&self.units.my.structures.filter(|u| u.is_ready()))
         {
             self.display_terminal.write_line_to_pane(
                 "Construction",
-                format!("{unit_type:?}[{count}]"),
+                &format!("{unit_type:?}[{count}]"),
                 false,
             );
         }
@@ -373,7 +375,7 @@ impl ReBiCycler {
 
     fn show_available_techs(&mut self) {
         self.display_terminal
-            .write_line_to_footer("Available Tech:".to_string());
+            .write_line_to_footer("Available Tech:");
         let abilities: Vec<AbilityId> = self
             .units
             .my
@@ -386,7 +388,39 @@ impl ReBiCycler {
             .collect();
         for ability in abilities {
             self.display_terminal
-                .write_line_to_footer(format!("- {ability:?}"));
+                .write_line_to_footer(&format!("- {ability:?}"));
+        }
+
+        let mut set = Vec::new();
+        for building in &self.units.my.structures {
+            let coords = (
+                building.type_id(),
+                building.position().x % 1.0,
+                building.position().y % 1.0,
+            );
+            if !set.contains(&coords) {
+                set.push(coords);
+            }
+        }
+        self.display_terminal
+            .write_line_to_footer("building centers:");
+        for coord in set {
+            self.display_terminal
+                .write_line_to_footer(&format!("- {coord:?}"));
+        }
+
+        let mut set = Vec::new();
+        for (point, building) in self.siting_director.iter() {
+            let coords = (building.size(), point.x % 1.0, point.y % 1.0);
+            if !set.contains(&coords) {
+                set.push(coords);
+            }
+        }
+        self.display_terminal
+            .write_line_to_footer("siting centers:");
+        for coord in set {
+            self.display_terminal
+                .write_line_to_footer(&format!("- {coord:?}"));
         }
     }
 }
