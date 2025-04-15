@@ -8,3 +8,4 @@ rust-sc2 = { git = "https://github.com/UltraMachine/rust-sc2" }
 slotmap = "1.0.7"
 console = "0.15.11"
 itertools = "0.14.0"
+image = "0.25.6"

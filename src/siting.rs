@@ -2,7 +2,8 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::{self, Debug, Display},
-    iter::once,
+    iter::{once, zip},
+    usize,
 };
 
 use crate::{
@@ -11,7 +12,7 @@ use crate::{
     protoss_bot::ReBiCycler,
     Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
-use itertools::Either;
+use itertools::{iproduct, Either};
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
 
 const ACCEPTABLE_GAS_DISTANCE: f32 = 12.0;
@@ -201,6 +202,10 @@ impl BuildingLocation {
         matches!(self.status, BuildingStatus::Free(_, _))
     }
 
+    pub const fn size(&self) -> SlotSize {
+        self.size
+    }
+
     pub const fn is_mine(&self) -> bool {
         matches!(
             self.status,
@@ -222,6 +227,19 @@ impl BuildingLocation {
                 .status
                 .can_build(intent.unwrap_or_else(|| self.size.default_checker())),
             _ => false,
+        }
+    }
+
+    pub fn color(&self) -> &str {
+        match self.status {
+            BuildingStatus::Free(_, PylonPower::Powered) => "green",
+            BuildingStatus::Free(_, PylonPower::Depowered) => "yellow",
+            BuildingStatus::Built(_, PylonPower::Depowered) => "dark blue",
+            BuildingStatus::Built(_, PylonPower::Powered) => "blue",
+            BuildingStatus::Constructing(_, PylonPower::Depowered) => "light blue",
+            BuildingStatus::Constructing(_, PylonPower::Powered) => "blue",
+            BuildingStatus::Blocked(_, PylonPower::Depowered) => "dark red",
+            BuildingStatus::Blocked(_, PylonPower::Powered) => "red",
         }
     }
 
@@ -385,6 +403,19 @@ impl SlotSize {
             Self::Townhall => UnitTypeId::Nexus,
         }
     }
+    pub fn contained_points(&self, center: &Point2) -> impl Iterator<Item = (usize, usize)> {
+        let bottom_left = (center.offset(-self.radius(), -self.radius()));
+
+        let range = match self {
+            Self::Tumor => todo!(),
+            Self::Small => 0..2,
+            Self::Standard => 0..3,
+            Self::Townhall => 0..5,
+        };
+        let offsets = iproduct!(range.clone(), range);
+
+        offsets.map(move |(x, y)| (bottom_left.x as usize + x, bottom_left.y as usize + y))
+    }
 }
 
 #[derive(Default)]
@@ -435,6 +466,16 @@ impl SitingDirector {
                     .insert(u.tag(), GasLocation::from_unit(&u));
             })
             .collect();
+    }
+
+    pub fn iter(
+        &self,
+    ) -> std::collections::hash_map::Iter<'_, rust_sc2::prelude::Point2, BuildingLocation> {
+        self.building_locations.iter()
+    }
+
+    pub fn iter_gas(&self) -> std::collections::hash_map::Iter<'_, u64, GasLocation> {
+        self.gas_locations.iter()
     }
 
     pub fn add_initial_nexus(&mut self, nexus: Unit) -> Result<(), BuildError> {
