@@ -81,7 +81,7 @@ impl ReBiCycler {
                 if ability.is_none() {
                     String::new()
                 } else {
-                    format!(": {progress}")
+                    format!(": {:.0}", progress * 100.0)
                 },
             );
             lines.push(out);
