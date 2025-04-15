@@ -22,6 +22,7 @@ pub enum BuildOrderAction {
     Train(UnitTypeId, AbilityId),
     Construct(UnitTypeId),
     Chrono(AbilityId),
+    ChronoWhatever(UnitTypeId),
     Research(UpgradeId, AbilityId, UnitTypeId),
     Expand,
     Surrender,
@@ -328,11 +329,89 @@ pub fn four_base_charge() -> BuildOrder {
         },
         Component {
             name: "Make zealots indefinitely".to_string(),
-            start_conditions: vec![StructureComplete(UnitTypeId::WarpGate)],
-            end_conditions: vec![],
-            action: Train(UnitTypeId::Zealot, AbilityId::GatewayTrainZealot),
+            start_conditions: vec![
+                StructureComplete(UnitTypeId::WarpGate),
+                AtLeastCount(UnitTypeId::Nexus, 2),
+            ],
+            end_conditions: vec![Never],
+            action: Train(UnitTypeId::Zealot, AbilityId::WarpGateTrainZealot),
             state: ComponentState::NotYetStarted,
         },
+    ];
+
+    let mut get_upgrades = vec![
+        Component::new(
+            "Build Forges",
+            &[AtLeastCount(UnitTypeId::TwilightCouncil, 1)],
+            &[AtLeastCount(UnitTypeId::Forge, 2)],
+            Construct(UnitTypeId::Forge),
+        ),
+        Component::new(
+            "Chrono Forges",
+            &[TechComplete(UpgradeId::Charge)],
+            &[Never],
+            ChronoWhatever(UnitTypeId::Forge),
+        ),
+        Component::new(
+            "Armor 1",
+            &[StructureComplete(UnitTypeId::Forge)],
+            &[TechComplete(UpgradeId::ProtossGroundArmorsLevel1)],
+            Research(
+                UpgradeId::ProtossGroundArmorsLevel1,
+                AbilityId::ForgeResearchProtossGroundArmorLevel1,
+                UnitTypeId::Forge,
+            ),
+        ),
+        Component::new(
+            "Weapons 1",
+            &[StructureComplete(UnitTypeId::Forge)],
+            &[TechComplete(UpgradeId::ProtossGroundWeaponsLevel1)],
+            Research(
+                UpgradeId::ProtossGroundWeaponsLevel1,
+                AbilityId::ForgeResearchProtossGroundWeaponsLevel1,
+                UnitTypeId::Forge,
+            ),
+        ),
+        Component::new(
+            "Armor 2",
+            &[TechComplete(UpgradeId::ProtossGroundArmorsLevel1)],
+            &[TechComplete(UpgradeId::ProtossGroundArmorsLevel2)],
+            Research(
+                UpgradeId::ProtossGroundArmorsLevel2,
+                AbilityId::ForgeResearchProtossGroundArmorLevel2,
+                UnitTypeId::Forge,
+            ),
+        ),
+        Component::new(
+            "Weapons 2",
+            &[TechComplete(UpgradeId::ProtossGroundWeaponsLevel1)],
+            &[TechComplete(UpgradeId::ProtossGroundWeaponsLevel2)],
+            Research(
+                UpgradeId::ProtossGroundWeaponsLevel2,
+                AbilityId::ForgeResearchProtossGroundWeaponsLevel2,
+                UnitTypeId::Forge,
+            ),
+        ),
+        Component::new(
+            "Armor 3",
+            &[TechComplete(UpgradeId::ProtossGroundArmorsLevel2)],
+            &[TechComplete(UpgradeId::ProtossGroundArmorsLevel3)],
+            Research(
+                UpgradeId::ProtossGroundArmorsLevel3,
+                AbilityId::ForgeResearchProtossGroundArmorLevel3,
+                UnitTypeId::Forge,
+            ),
+        ),
+        Component::new(
+            "Weapons 3",
+            &[TechComplete(UpgradeId::ProtossGroundWeaponsLevel2)],
+            &[TechComplete(UpgradeId::ProtossGroundWeaponsLevel3)],
+            Research(
+                UpgradeId::ProtossGroundWeaponsLevel3,
+                AbilityId::ForgeResearchProtossGroundWeaponsLevel3,
+                UnitTypeId::Forge,
+            ),
+        ),
     ];
 
     let mut parts = Vec::new();
@@ -342,6 +421,7 @@ pub fn four_base_charge() -> BuildOrder {
     parts.append(&mut maintain_supply);
     parts.append(&mut expand_and_probe);
     parts.append(&mut get_charge);
+    parts.append(&mut get_upgrades);
     parts.append(&mut add_more_gateways);
     parts.append(&mut train_zealots);
     BuildOrder(parts)

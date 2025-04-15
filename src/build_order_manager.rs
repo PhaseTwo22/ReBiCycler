@@ -66,6 +66,20 @@ impl ReBiCycler {
                 .townhalls
                 .iter()
                 .any(|n| n.has_ability(AbilityId::EffectChronoBoostEnergyCost)),
+            BuildOrderAction::ChronoWhatever(trainer) => {
+                self.units
+                    .my
+                    .townhalls
+                    .iter()
+                    .any(|n| n.has_ability(AbilityId::EffectChronoBoostEnergyCost))
+                    && self
+                        .units
+                        .my
+                        .structures
+                        .iter()
+                        .of_type(trainer)
+                        .any(rust_sc2::prelude::Unit::is_active)
+            }
             BuildOrderAction::Construct(building) => {
                 let afford = self.can_afford(building, true);
                 let has_worker = !self.units.my.workers.is_empty();
@@ -148,6 +162,7 @@ impl ReBiCycler {
             }
             BuildOrderAction::Train(unit_type, ability) => self.train(unit_type, ability),
             BuildOrderAction::Chrono(ability) => self.chrono_boost(ability),
+            BuildOrderAction::ChronoWhatever(trainer) => self.chrono_whatever(trainer),
             BuildOrderAction::Research(upgrade, ability, researcher) => {
                 self.display_terminal.write_line_to_footer(&format!(
                     "Attempting build action to {ability:?} for {upgrade:?}"
@@ -272,7 +287,30 @@ impl ReBiCycler {
         }
         Err(BuildError::NoPlacementLocations)
     }
+    fn chrono_whatever(&self, trainer: UnitTypeId) -> Result<(), BuildError> {
+        let nexus = self
+            .units
+            .my
+            .structures
+            .iter()
+            .find(|unit| unit.has_ability(AbilityId::EffectChronoBoostEnergyCost))
+            .ok_or(BuildError::CantAfford)?;
+        let target = self
+            .units
+            .my
+            .structures
+            .iter()
+            .of_type(trainer)
+            .find(|s| s.is_active() && !s.has_buff(BuffId::ChronoBoostEnergyCost))
+            .ok_or(BuildError::AllChronoed(AbilityId::YamatoYamatoGun))?;
 
+        nexus.command(
+            AbilityId::EffectChronoBoostEnergyCost,
+            Target::Tag(target.tag()),
+            false,
+        );
+        Ok(())
+    }
     fn chrono_boost(&self, ability: AbilityId) -> Result<(), BuildError> {
         let nexus = self
             .units

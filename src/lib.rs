@@ -71,7 +71,7 @@ impl Tag {
     }
 }
 #[must_use]
-pub const fn is_protoss_building(unit: UnitTypeId) -> bool {
+pub const fn is_protoss_building(unit: &UnitTypeId) -> bool {
     matches!(
         unit,
         UnitTypeId::Nexus
@@ -148,7 +148,7 @@ pub const fn is_protoss_tech(unit: UnitTypeId) -> bool {
 }
 
 #[must_use]
-pub const fn structure_needs_power(unit: UnitTypeId) -> bool {
+pub const fn structure_needs_power(unit: &UnitTypeId) -> bool {
     if is_protoss_building(unit) {
         !matches!(
             unit,

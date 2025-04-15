@@ -149,7 +149,7 @@ impl ReBiCycler {
                 if self.siting_director.lose_assimilator(unit_tag).is_err() {
                     println!("We couldn't find the assimilator to destroy");
                 }
-            } else if crate::is_protoss_building(unit_details.type_id) {
+            } else if crate::is_protoss_building(&unit_details.type_id) {
                 if let Err(e) = self.siting_director.find_and_destroy_building(&unit_tag) {
                     println!("Destroyed structure not logged in siting director! {e:?}");
                 };

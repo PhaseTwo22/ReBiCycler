@@ -9,7 +9,7 @@ impl ReBiCycler {
 
         for (point, bl) in self.siting_director.iter() {
             let contained_points = bl.size().contained_points(point);
-            let color = bl.color(255);
+            let color = bl.color(200);
             for (x, y) in contained_points {
                 if point_within_image(&self.game_info.map_size, (x, y)) {
                     image.put_pixel(x, y, color);
@@ -31,8 +31,8 @@ impl ReBiCycler {
         for (i, val) in grid.iter().enumerate() {
             let (x, y) = ((i / grid.dim().1) as u32, (i % grid.dim().0) as u32);
             let color = Rgba(match val {
-                Pixel::Set => [50, 50, 50, a],
-                Pixel::Empty => [0, 0, 0, a],
+                Pixel::Set => [0, 0, 0, a],
+                Pixel::Empty => [50, 50, 50, a],
             });
             image.put_pixel(x, y, color);
         }

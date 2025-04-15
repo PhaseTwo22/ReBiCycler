@@ -25,8 +25,8 @@ const TECTONIC_ICON: &str = "💥";
 const NOT_RESEARCHED: &str = "  ";
 
 impl ReBiCycler {
-    pub fn monitor(&mut self, _frame_no: usize) {
-        self.display_general();
+    pub fn monitor(&mut self, frame_no: usize) {
+        self.display_general(frame_no);
         self.display_construction();
         self.display_structures();
 
@@ -42,7 +42,7 @@ impl ReBiCycler {
         self.display_terminal.flush();
     }
 
-    fn display_general(&mut self) {
+    fn display_general(&mut self, frame_no: usize) {
         let players = self
             .game_info
             .players
@@ -50,11 +50,12 @@ impl ReBiCycler {
             .flat_map(|p| &p.player_name)
             .join(" vs ");
         let map = format!(
-            "{} | {} [{:.0}:{:0>2.0}]",
+            "{} | {} [{:.0}:{:0>2.0}] | Frame {}",
             self.game_info.map_name,
             players,
             self.time / 60.0,
             self.time % 60.0,
+            frame_no
         );
         let header = format!(
             "M: {} G: {} S:{}/{}",
@@ -74,7 +75,7 @@ impl ReBiCycler {
             let producing = ability.as_ref().map_or_else(String::new, |a| {
                 format!("{:?}", crate::ability_produces(*a))
             });
-            let out = (
+            let out: (String, String, String, String) = (
                 structure_name,
                 producing,
                 count.to_string(),

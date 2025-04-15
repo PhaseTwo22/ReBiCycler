@@ -33,13 +33,13 @@ pub enum BuildingStatus {
     Constructing(Tag, PylonPower),
 }
 impl BuildingStatus {
-    pub fn can_build(&self, type_id: UnitTypeId) -> bool {
+    pub fn can_build(&self, type_id: &UnitTypeId) -> bool {
         let needs_power = crate::structure_needs_power(type_id);
 
         match self {
             Self::Free(intent, power) => {
                 let power_ok = !needs_power || *power == PylonPower::Powered;
-                let intent_ok = intent.map_or(true, |i| i == type_id);
+                let intent_ok = intent.map_or(true, |i| i == *type_id);
                 power_ok && intent_ok
             }
 
@@ -115,7 +115,7 @@ impl GasLocation {
             (T::DePower, state) => state.depower(),
             (T::RePower, state) => Ok(state.repower()),
             (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(tag.unit_type) {
+                if self.status.can_build(&tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
                     Err(BuildingTransitionError::InvalidTransition {
@@ -225,7 +225,7 @@ impl BuildingLocation {
         match self.status {
             BuildingStatus::Free(intent, _) => self
                 .status
-                .can_build(intent.unwrap_or_else(|| self.size.default_checker())),
+                .can_build(&intent.unwrap_or_else(|| self.size.default_checker())),
             _ => false,
         }
     }
@@ -266,7 +266,7 @@ impl BuildingLocation {
             BuildingStatus::Constructing(tag, _) | BuildingStatus::Built(tag, _) => tag.unit_type,
             _ => return true, //no intent, probably needs power.
         };
-        crate::structure_needs_power(unit_type)
+        crate::structure_needs_power(&unit_type)
     }
 
     pub fn transition(
@@ -279,7 +279,7 @@ impl BuildingLocation {
             (T::DePower, state) => state.depower(),
             (T::RePower, state) => Ok(state.repower()),
             (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(tag.unit_type) {
+                if self.status.can_build(&tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
                     Err(BuildingTransitionError::InvalidTransition {
@@ -513,12 +513,12 @@ impl SitingDirector {
 
     pub fn get_free_geyser(&self, near: Point2, distance: f32) -> Option<&GasLocation> {
         self.gas_locations.values().find(|gl| {
-            gl.location.distance(near) <= distance && gl.status.can_build(UnitTypeId::Assimilator)
+            gl.location.distance(near) <= distance && gl.status.can_build(&UnitTypeId::Assimilator)
         })
     }
 
     pub fn construction_begin(&mut self, tag: Tag, location: Point2) -> Result<(), BuildError> {
-        if crate::is_protoss_building(tag.unit_type) && !crate::is_assimilator(tag.unit_type) {
+        if crate::is_protoss_building(&tag.unit_type) && !crate::is_assimilator(tag.unit_type) {
             Ok(())
         } else {
             Err(BuildError::InvalidUnit(format!(
@@ -610,7 +610,7 @@ impl SitingDirector {
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
         self.building_locations.values().filter(|bl| {
-            let fits_status = bl.status.can_build(*type_id);
+            let fits_status = bl.status.can_build(type_id);
             let fits_size = bl.size == *size;
             fits_size && fits_status
         })
@@ -619,7 +619,7 @@ impl SitingDirector {
     pub fn get_available_building_site_prioritized<F>(
         &self,
         size: SlotSize,
-        type_id: UnitTypeId,
+        type_id: &UnitTypeId,
         priority_closure: F,
     ) -> Option<&BuildingLocation>
     where
@@ -734,8 +734,11 @@ impl ReBiCycler {
 
         let position = self
             .siting_director
-            .get_available_building_sites(&size, &structure_type)
-            .next()
+            .get_available_building_site_prioritized(size, &structure_type, |a, b| {
+                a.location
+                    .distance(self.start_location)
+                    .total_cmp(&b.location.distance(self.start_location))
+            })
             .ok_or(BuildError::NoPlacementLocations)?;
 
         let builder = self
@@ -973,7 +976,7 @@ mod tests {
 
         assert!(!pylon.needs_power());
         assert!(pylon.is_free());
-        assert!(pylon.status.can_build(UnitTypeId::Pylon));
+        assert!(pylon.status.can_build(&UnitTypeId::Pylon));
 
         pylon
             .transition(BuildingTransition::Construct(Tag {
