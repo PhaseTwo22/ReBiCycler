@@ -699,6 +699,28 @@ impl SitingDirector {
                 ))
             })
     }
+    pub fn check_morph_gateways(&mut self, warpgates: Units) -> Vec<BuildingTransitionError> {
+        let gateways = self
+            .building_locations
+            .values_mut()
+            .filter_map(|bl| match bl.status {
+                BuildingStatus::Built(
+                    Tag {
+                        tag,
+                        unit_type: UnitTypeId::Gateway,
+                    },
+                    _,
+                ) => Some((bl, tag)),
+                _ => None,
+            });
+        let changed: Vec<BuildingTransitionError> = gateways
+            .filter(|(_, gw)| warpgates.contains_tag(*gw))
+            .map(|(bl, _)| bl.transition(BuildingTransition::Morph(UnitTypeId::WarpGate)))
+            .filter_map(std::result::Result::err)
+            .collect();
+
+        changed
+    }
 }
 
 impl ReBiCycler {
@@ -716,7 +738,7 @@ impl ReBiCycler {
     /// - `BuildError::NoPlacementLocation`
     /// - `BuildError::NoTrainer` if we have no workers
     /// - `BuildError::CantPlace` if we can't place at the found location.
-    pub fn build(&self, structure_type: UnitTypeId) -> Result<(), BuildError> {
+    pub fn build(&mut self, structure_type: UnitTypeId) -> Result<(), BuildError> {
         let size = SlotSize::from(structure_type)?;
         //self.game_data.units[structure_type]
 
@@ -735,8 +757,10 @@ impl ReBiCycler {
             .workers
             .closest(position.location)
             .ok_or(BuildError::NoTrainer)?;
+
         builder.build(structure_type, position.location, false);
-        builder.sleep(5);
+
+        self.mining_manager.remove_miner(builder.tag());
         Ok(())
     }
     /// Tells a base with a free geyser to build an assimilator.
@@ -851,15 +875,14 @@ impl ReBiCycler {
         }
     }
 
-    /// Assigns a worker to the nearest base.
-    ///
-    /// # Errors
-    /// `UnitEmploymentError` if no base managers exist, or we have no townhalls.
-    pub fn back_to_work(&mut self, worker: &Unit) -> Result<(), UnitEmploymentError> {
+    /// Assigns a worker an available resource.
+    pub fn back_to_work(&mut self, worker: u64) {
         if let Err(e) = self.mining_manager.assign_miner(worker) {
-            println!("Can't employ worker: {e:?}");
+            self.log_error(format!(
+                "Can't employ worker: {:?}|{:?}",
+                e, self.mining_manager
+            ));
         }
-        Ok(())
     }
 
     /// When a new base finishes, we want to make a new Base Manager for it.

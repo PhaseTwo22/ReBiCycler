@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use rust_sc2::{
-    ids::{EffectId, UnitTypeId},
+    game_state::Alert,
+    ids::UnitTypeId,
     player::Race,
     prelude::{Alliance, Point2},
     unit::Unit,
@@ -41,11 +42,22 @@ impl crate::protoss_bot::ReBiCycler {
             println!("Action failed: {error:?}");
         });
 
-        let effects = &self.state.observation.raw.effects;
-        if !effects.is_empty() {
-            let ids: Vec<EffectId> = effects.iter().map(|e| e.id).collect();
-            println!("Active effects: {ids:?}");
+        if self
+            .state
+            .observation
+            .alerts
+            .iter()
+            .any(|a| matches!(&a, Alert::TransformationComplete))
+        {
+            let warpgates = self.units.my.structures.of_type(UnitTypeId::WarpGate);
+            self.siting_director.check_morph_gateways(warpgates);
         }
+
+        // let effects = &self.state.observation.raw.effects;
+        // if !effects.is_empty() {
+        //     let ids: Vec<EffectId> = effects.iter().map(|e| e.id).collect();
+        //     println!("Active effects: {ids:?}");
+        // }
 
         let seen_units = self.units.all.clone();
 
