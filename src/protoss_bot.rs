@@ -144,7 +144,7 @@ impl ReBiCycler {
                 if self.siting_director.lose_assimilator(unit_tag).is_err() {
                     self.log_error("We couldn't find the assimilator to destroy".to_string());
                 }
-                let unemployed = self.mining_manager.remove_resource(unit_tag.tag);
+                let unemployed = self.mining_manager.remove_resource(unit_tag.tag, false);
                 for worker_tag in &unemployed {
                     self.back_to_work(*worker_tag);
                 }
@@ -169,7 +169,7 @@ impl ReBiCycler {
                     }
                 }
             } else if crate::is_minerals(unit_details.type_id) {
-                let unemployed = self.mining_manager.remove_resource(unit_tag.tag);
+                let unemployed = self.mining_manager.remove_resource(unit_tag.tag, true);
 
                 for unit in unemployed {
                     self.back_to_work(unit);

@@ -209,7 +209,8 @@ const fn ability_produces(ability: AbilityId) -> UnitTypeId {
     }
 }
 
-#[must_use] pub fn count_unit_types(units: &Units) -> HashMap<UnitTypeId, usize> {
+#[must_use]
+pub fn count_unit_types(units: &Units) -> HashMap<UnitTypeId, usize> {
     let mut counts: HashMap<UnitTypeId, usize> = HashMap::new();
     let _: () = units
         .iter()
@@ -224,4 +225,10 @@ where
 {
     let new_count = map.get(&key).unwrap_or(&0) + 1;
     map.insert(key, new_count);
+}
+
+#[must_use] pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering {
+    let d2p1 = anchor.distance(p1);
+    let d2p2 = anchor.distance(p2);
+    d2p1.total_cmp(&d2p2)
 }
