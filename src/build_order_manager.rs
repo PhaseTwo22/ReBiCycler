@@ -171,7 +171,9 @@ impl ReBiCycler {
             }
             BuildOrderAction::Surrender => {
                 println!("Surrendering. GG!");
-                self.on_end(GameResult::Defeat);
+                if let Err(e) = self.on_end(GameResult::Defeat) {
+                    println!("ending the game didn't go well: {e:?}");
+                }
                 let _ = self.leave();
                 Ok(())
             }

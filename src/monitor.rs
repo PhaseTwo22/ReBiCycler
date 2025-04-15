@@ -337,7 +337,7 @@ impl ReBiCycler {
             .my
             .structures
             .iter()
-            .filter(|u| u.build_progress() != 1.0_f32)
+            .filter(|u| u.build_progress() < 1.0_f32)
         {
             out.push(format!(
                 "{:?}: {:.0}%",

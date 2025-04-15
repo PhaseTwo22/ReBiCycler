@@ -33,13 +33,13 @@ pub enum BuildingStatus {
     Constructing(Tag, PylonPower),
 }
 impl BuildingStatus {
-    pub fn can_build(&self, type_id: &UnitTypeId) -> bool {
-        let needs_power = crate::structure_needs_power(type_id);
+    pub fn can_build(&self, type_id: UnitTypeId) -> bool {
+        let needs_power = crate::structure_needs_power(&type_id);
 
         match self {
             Self::Free(intent, power) => {
                 let power_ok = !needs_power || *power == PylonPower::Powered;
-                let intent_ok = intent.map_or(true, |i| i == *type_id);
+                let intent_ok = intent.map_or(true, |i| i == type_id);
                 power_ok && intent_ok
             }
 
@@ -115,7 +115,7 @@ impl GasLocation {
             (T::DePower, state) => state.depower(),
             (T::RePower, state) => Ok(state.repower()),
             (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(&tag.unit_type) {
+                if self.status.can_build(tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
                     Err(BuildingTransitionError::InvalidTransition {
@@ -137,10 +137,11 @@ impl GasLocation {
                 Ok(S::Free(intent, power))
             }
 
-            (T::UnObstruct | T::Morph(_), _) | (T::Finish | T::Destroy, S::Free(_, _)) |
-(T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) |
-(T::Obstruct | T::Construct(_), S::Constructing(_, _)) |
-(T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+            (T::UnObstruct | T::Morph(_), _)
+            | (T::Finish | T::Destroy, S::Free(_, _))
+            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
+            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
+            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
                 Err(BuildingTransitionError::InvalidTransition {
                     from: self.status.clone(),
                     change: transition,
@@ -225,7 +226,7 @@ impl BuildingLocation {
         match self.status {
             BuildingStatus::Free(intent, _) => self
                 .status
-                .can_build(&intent.unwrap_or_else(|| self.size.default_checker())),
+                .can_build(intent.unwrap_or_else(|| self.size.default_checker())),
             _ => false,
         }
     }
@@ -279,7 +280,7 @@ impl BuildingLocation {
             (T::DePower, state) => state.depower(),
             (T::RePower, state) => Ok(state.repower()),
             (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(&tag.unit_type) {
+                if self.status.can_build(tag.unit_type) {
                     Ok(S::Constructing(tag, power))
                 } else {
                     Err(BuildingTransitionError::InvalidTransition {
@@ -308,10 +309,11 @@ impl BuildingLocation {
                 power,
             )),
 
-            (T::UnObstruct | T::Morph(_), _) | (T::Finish | T::Destroy, S::Free(_, _)) |
-(T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _)) |
-(T::Obstruct | T::Construct(_), S::Constructing(_, _)) |
-(T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
+            (T::UnObstruct | T::Morph(_), _)
+            | (T::Finish | T::Destroy, S::Free(_, _))
+            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
+            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
+            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
                 Err(BuildingTransitionError::InvalidTransition {
                     from: self.status.clone(),
                     change: transition,
@@ -409,7 +411,7 @@ impl SlotSize {
             Self::Townhall => UnitTypeId::Nexus,
         }
     }
-    pub fn contained_points(&self, center: &Point2) -> impl Iterator<Item = (u32, u32)> {
+    pub fn contained_points(self, center: Point2) -> impl Iterator<Item = (u32, u32)> {
         let bottom_left = center.offset(-self.radius(), -self.radius());
 
         let range = match self {
@@ -419,7 +421,7 @@ impl SlotSize {
             Self::Townhall => 0..5,
         };
         let offsets = iproduct!(range.clone(), range);
-
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         offsets.map(move |(x, y)| (bottom_left.x as u32 + x, bottom_left.y as u32 + y))
     }
 }
@@ -484,12 +486,12 @@ impl SitingDirector {
         self.gas_locations.iter()
     }
 
-    pub fn add_initial_nexus(&mut self, nexus: Unit) -> Result<(), BuildError> {
+    pub fn add_initial_nexus(&mut self, nexus: &Unit) -> Result<(), BuildError> {
         let home_loc = self
             .building_locations
             .get_mut(&nexus.position())
-            .ok_or(BuildError::CantPlace(nexus.position(), nexus.type_id()))?;
-        home_loc.status = BuildingStatus::Built(Tag::from_unit(&nexus), PylonPower::Depowered);
+            .ok_or_else(|| BuildError::CantPlace(nexus.position(), nexus.type_id()))?;
+        home_loc.status = BuildingStatus::Built(Tag::from_unit(nexus), PylonPower::Depowered);
         Ok(())
     }
 
@@ -519,7 +521,7 @@ impl SitingDirector {
 
     pub fn get_free_geyser(&self, near: Point2, distance: f32) -> Option<&GasLocation> {
         self.gas_locations.values().find(|gl| {
-            gl.location.distance(near) <= distance && gl.status.can_build(&UnitTypeId::Assimilator)
+            gl.location.distance(near) <= distance && gl.status.can_build(UnitTypeId::Assimilator)
         })
     }
 
@@ -546,17 +548,17 @@ impl SitingDirector {
         if structure.is_geyser() {
             self.gas_locations
                 .get_mut(&structure.tag())
-                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding(
-                    structure.type_id(),
-                ))?
+                .ok_or_else(|| {
+                    BuildError::NoBuildingLocationForFinishedBuilding(structure.type_id())
+                })?
                 .transition(BuildingTransition::Finish)
                 .map_err(BuildError::CantTransitionBuildingLocation)
         } else {
             self.building_locations
                 .get_mut(&structure.position())
-                .ok_or(BuildError::NoBuildingLocationForFinishedBuilding(
-                    structure.type_id(),
-                ))?
+                .ok_or_else(|| {
+                    BuildError::NoBuildingLocationForFinishedBuilding(structure.type_id())
+                })?
                 .transition(BuildingTransition::Finish)
                 .map_err(BuildError::CantTransitionBuildingLocation)
         }
@@ -616,7 +618,7 @@ impl SitingDirector {
         type_id: &'a UnitTypeId,
     ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
         self.building_locations.values().filter(|bl| {
-            let fits_status = bl.status.can_build(type_id);
+            let fits_status = bl.status.can_build(*type_id);
             let fits_size = bl.size == *size;
             fits_size && fits_status
         })
@@ -625,7 +627,7 @@ impl SitingDirector {
     pub fn get_available_building_site_prioritized<F>(
         &self,
         size: SlotSize,
-        type_id: &UnitTypeId,
+        type_id: UnitTypeId,
         priority_closure: F,
     ) -> Option<&BuildingLocation>
     where
@@ -687,7 +689,7 @@ impl SitingDirector {
 
     pub fn pylon_interceptor(center_point: Point2) -> Vec<BuildingLocation> {
         let pylon_radius = SlotSize::Small.radius();
-        let pylon_width = SlotSize::Small.width();
+
         let standard_radius = SlotSize::Standard.radius();
         let standard_width = SlotSize::Standard.width();
 
@@ -753,7 +755,7 @@ impl ReBiCycler {
 
         let position = self
             .siting_director
-            .get_available_building_site_prioritized(size, &structure_type, |a, b| {
+            .get_available_building_site_prioritized(size, structure_type, |a, b| {
                 a.location
                     .distance(self.start_location)
                     .total_cmp(&b.location.distance(self.start_location))
@@ -831,6 +833,7 @@ impl ReBiCycler {
                 });
 
         // then we check if those locations are actually obstructed
+        #[allow(clippy::needless_collect)]
         let changes: Vec<(Point2, BuildingTransition)> = worth_checking
             .into_iter()
             .map(|(point, checker)| (point, self.location_is_obstructed(point, checker)))
@@ -866,13 +869,13 @@ impl ReBiCycler {
 
         // Success: great.
         // If the error we get is no power, i think that means it's ok.
-        if result == ActionResult::Success
-            || result == ActionResult::CantBuildTooFarFromBuildPowerSource
-        {
+        if result == ActionResult::Success {
             BuildingTransition::UnObstruct
         }
         // this seems to be the catchall result
-        else if result == ActionResult::CantBuildLocationInvalid {
+        else if result == ActionResult::CantBuildLocationInvalid
+            || result == ActionResult::CantBuildTooFarFromBuildPowerSource
+        {
             BuildingTransition::Obstruct
         } else {
             // this is a new result that I haven't seen before
@@ -934,7 +937,6 @@ impl ReBiCycler {
 
 #[cfg(test)]
 mod tests {
-    
 
     use super::*;
 
@@ -1039,25 +1041,23 @@ mod tests {
         assert!(!buildings_intersect(&buildings));
     }
     #[test]
-    fn grubub() {
+    fn pylon_transitions_ok() {
         let mut pylon = BuildingLocation::pylon(Point2::new(0.0, 0.0));
 
         assert!(!pylon.needs_power());
         assert!(pylon.is_free());
-        assert!(pylon.status.can_build(&UnitTypeId::Pylon));
+        assert!(pylon.status.can_build(UnitTypeId::Pylon));
 
-        pylon
-            .transition(BuildingTransition::Construct(Tag {
-                tag: 1,
-                unit_type: UnitTypeId::Pylon,
-            }))
-            .unwrap();
+        let _ = pylon.transition(BuildingTransition::Construct(Tag {
+            tag: 1,
+            unit_type: UnitTypeId::Pylon,
+        }));
 
         assert!(pylon.is_mine());
 
-        pylon.transition(BuildingTransition::Finish).unwrap();
+        assert!(pylon.transition(BuildingTransition::Finish).is_ok());
 
-        pylon.transition(BuildingTransition::Destroy).unwrap();
+        assert!(pylon.transition(BuildingTransition::Destroy).is_ok());
 
         assert!(pylon.is_free());
     }
@@ -1066,16 +1066,16 @@ mod tests {
     fn cant_build_unpowered_gateway() {
         let mut gate_location = BuildingLocation::standard(ORIGIN);
 
-        gate_location
+        assert!(gate_location
             .transition(BuildingTransition::Construct(Tag {
                 tag: 2,
                 unit_type: UnitTypeId::Gateway,
             }))
-            .expect_err("unpowered location can't be built");
+            .is_err());
 
-        gate_location
+        assert!(gate_location
             .transition(BuildingTransition::RePower)
-            .unwrap();
+            .is_ok());
 
         assert!(gate_location.could_build());
     }
@@ -1083,13 +1083,13 @@ mod tests {
     #[test]
     fn point_containers_ok() {
         let pylon_location = BuildingLocation::pylon(ORIGIN);
-        let points: Vec<(u32, u32)> = pylon_location.size().contained_points(&ORIGIN).collect();
+        let points: Vec<(u32, u32)> = pylon_location.size().contained_points(ORIGIN).collect();
         assert_eq!(points, vec![(0, 0), (0, 1), (1, 0), (1, 1)]);
 
         let gate_location = BuildingLocation::standard(Point2::new(1.5, 1.5));
         let gate_points: Vec<(u32, u32)> = gate_location
             .size()
-            .contained_points(&gate_location.location)
+            .contained_points(gate_location.location)
             .collect();
         assert_eq!(
             gate_points,
@@ -1113,15 +1113,15 @@ mod tests {
         let mut touch_counts: HashMap<(u32, u32), usize> = HashMap::new();
 
         for bl in pattern {
-            let contained_points = bl.size().contained_points(&bl.location);
+            let contained_points = bl.size().contained_points(bl.location);
             for (x, y) in contained_points {
-                let current_count = touch_counts
+                touch_counts
                     .entry((x, y))
                     .and_modify(|count| *count += 1)
                     .or_insert(1);
             }
         }
-        touch_counts.retain(|k, v| v > &mut 1);
+        touch_counts.retain(|_, v| v > &mut 1);
         assert!(touch_counts.is_empty(), "{touch_counts:?}");
     }
 }

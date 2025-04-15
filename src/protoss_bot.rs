@@ -1,6 +1,6 @@
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
-use crate::errors::{BuildError, UnhandledError};
+use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
 use crate::readout::DisplayTerminal;
@@ -79,7 +79,7 @@ impl Player for ReBiCycler {
     }
 
     fn on_end(&self, _result: GameResult) -> SC2Result<()> {
-        self.display_terminal.save_history("replays/history.txt");
+        let _ = self.display_terminal.save_history("replays/history.txt");
         Ok(())
     }
 }
@@ -106,13 +106,13 @@ impl ReBiCycler {
             .collect();
         for mineral in nearby_minerals {
             if let Err(e) = self.mining_manager.add_resource(mineral) {
-                self.unhandle_unhandle(format!("Error adding initial minerals: {e:?}"));
+                self.log_error(format!("Error adding initial minerals: {e:?}"));
             };
         }
 
         for worker in &self.units.my.workers.clone() {
             if self.back_to_work(worker).is_err() {
-                self.unhandle_unhandle("No bases at game start?!".to_string());
+                self.log_error("No bases at game start?!".to_string());
             }
         }
 
@@ -124,12 +124,12 @@ impl ReBiCycler {
             .ok_or_else(|| BuildError::InvalidUnit("No nexus at game start?!".to_string()))
             .cloned();
         let inserted = match initial_slotting {
-            Ok(nexus) => self.siting_director.add_initial_nexus(nexus),
+            Ok(nexus) => self.siting_director.add_initial_nexus(&nexus),
             Err(e) => Err(e),
         };
 
         if let Err(e) = inserted {
-            self.unhandle_unhandle(format!("Can't place nexus in initial buildingslot: {e:?}"));
+            self.log_error(format!("Can't place nexus in initial buildingslot: {e:?}"));
         }
     }
 
@@ -169,7 +169,9 @@ impl ReBiCycler {
                     .collect();
 
                 for unit in unemployed {
-                    self.back_to_work(&unit.clone());
+                    if let Err(e) = self.back_to_work(&unit.clone()) {
+                        self.log_error(format!("{e:?}"));
+                    }
                 }
             } else if unit_tag.unit_type == UnitTypeId::Probe
                 && self.mining_manager.remove_miner(unit_tag.tag)
@@ -183,16 +185,17 @@ impl ReBiCycler {
         if let Some(unit) = self.units.my.units.get(unit_tag).cloned() {
             if unit.type_id() == UnitTypeId::Probe && self.game_started {
                 if let Err(e) = self.back_to_work(&unit) {
-                    self.unhandle_unhandle(format!("Unable to assign new probe to a nexus? {e:?}"));
+                    self.log_error(format!("Unable to assign new probe to a nexus? {e:?}"));
                 }
             }
         } else {
-            self.unhandle_unhandle(format!("UnitCreated but unit not found! {unit_tag}"));
+            self.log_error(format!("UnitCreated but unit not found! {unit_tag}"));
         }
     }
 
-    pub fn unhandle_unhandle(&mut self, uhe: UnhandledError) {
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn log_error(&mut self, message: String) {
         self.display_terminal
-            .write_line_to_pane("Errors", &uhe, true);
+            .write_line_to_pane("Errors", &message, true);
     }
 }
