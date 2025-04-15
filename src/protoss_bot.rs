@@ -106,7 +106,7 @@ impl ReBiCycler {
             .cloned()
             .collect();
         for mineral in nearby_minerals {
-            if let Err(e) = self.mining_manager.add_resource(mineral) {
+            if let Err(e) = self.mining_manager.add_resource(&mineral) {
                 self.log_error(format!("Error adding initial minerals: {e:?}"));
             };
         }

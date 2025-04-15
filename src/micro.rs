@@ -177,8 +177,7 @@ impl MinerManager {
         let mut out = Vec::new();
         for (miner, (assignment, _state)) in &self.miners {
             if match asset_type {
-                MinerAsset::Gas => assignment.resource.tag,
-                MinerAsset::Minerals => assignment.resource.tag,
+                MinerAsset::Gas | MinerAsset::Minerals => assignment.resource.tag,
                 MinerAsset::Townhall => assignment.townhall.tag,
             } == removed_asset
             {
@@ -279,23 +278,23 @@ impl MinerManager {
         }
     }
 
-    pub fn add_resource(&mut self, unit: Unit) -> Result<(), MiningError> {
+    pub fn add_resource(&mut self, unit: &Unit) -> Result<(), MiningError> {
         if unit.is_mineral() || unit.is_geyser() {
             self.assets
-                .insert(unit.tag(), ResourceSite::from_unit(&unit));
+                .insert(unit.tag(), ResourceSite::from_unit(unit));
             Ok(())
         } else {
-            Err(MiningError::NotHarvestable(Tag::from_unit(&unit)))
+            Err(MiningError::NotHarvestable(Tag::from_unit(unit)))
         }
     }
 
-    pub fn add_townhall(&mut self, unit: Unit) -> Result<(), MiningError> {
+    pub fn add_townhall(&mut self, unit: &Unit) -> Result<(), MiningError> {
         if unit.is_townhall() {
             self.assets
-                .insert(unit.tag(), ResourceSite::from_unit(&unit));
+                .insert(unit.tag(), ResourceSite::from_unit(unit));
             Ok(())
         } else {
-            Err(MiningError::NotTownhall(Tag::from_unit(&unit)))
+            Err(MiningError::NotTownhall(Tag::from_unit(unit)))
         }
     }
 

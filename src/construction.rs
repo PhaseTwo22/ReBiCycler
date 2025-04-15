@@ -26,7 +26,7 @@ impl ReBiCycler {
                 .collect();
             let mut issues = Vec::new();
             for mineral in minerals {
-                if let Err(e) = self.mining_manager.add_resource(mineral) {
+                if let Err(e) = self.mining_manager.add_resource(&mineral) {
                     issues.push(format!("Can't add mineral to Mining Manager: {e:?}"));
                 }
             }
@@ -37,7 +37,7 @@ impl ReBiCycler {
             self.update_building_power(UnitTypeId::Pylon, building.position(), true);
         } else if crate::is_assimilator(building.type_id()) {
             let bc = building.clone();
-            if let Err(e) = self.mining_manager.add_resource(bc) {
+            if let Err(e) = self.mining_manager.add_resource(&bc) {
                 println!("Can't mine this: {e:?}");
             };
         }

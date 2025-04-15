@@ -30,6 +30,7 @@ impl ReBiCycler {
             #[allow(clippy::cast_possible_truncation)]
             let color = worker_color(h, 200);
             let pos = w.position().round().as_tuple();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let (x, y) = (pos.0 as u32, pos.1 as u32);
 
             if point_within_image(&self.game_info.map_size, (x, y)) {

@@ -890,15 +890,13 @@ impl ReBiCycler {
     /// # Errors
     /// `BuildError::NoBuildingLocationHere` if the base isn't on an expansion location
     pub fn new_base_finished(&mut self, nexus: &Unit) -> Result<(), BuildError> {
-        self.mining_manager
-            .add_townhall(nexus.clone())
-            .map_err(|e| {
-                if let MiningError::NotTownhall(tag) = e {
-                    BuildError::InvalidUnit(format!("{tag:?} is not a townhall"))
-                } else {
-                    BuildError::InvalidUnit(format!("new error from finising a base: {e:?}"))
-                }
-            })
+        self.mining_manager.add_townhall(nexus).map_err(|e| {
+            if let MiningError::NotTownhall(tag) = e {
+                BuildError::InvalidUnit(format!("{tag:?} is not a townhall"))
+            } else {
+                BuildError::InvalidUnit(format!("new error from finising a base: {e:?}"))
+            }
+        })
     }
     /// Finds a gas to take at the specified base and builds it
     /// # Errors
