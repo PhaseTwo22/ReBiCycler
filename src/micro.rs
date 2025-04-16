@@ -152,7 +152,7 @@ impl MinerManager {
         let mut mineral_assigned = 0;
         let mut gas_max = 0;
         let mut gas_assigned = 0;
-        for (asset, rs) in &self.assets {
+        for (asset, rs) in self.assets.iter() {
             let count = self.resource_assignment_counts.get(asset).unwrap_or(&0);
             if rs.is_gas() {
                 gas_max += rs.harvesters();
