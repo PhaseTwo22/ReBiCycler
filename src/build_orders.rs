@@ -274,7 +274,7 @@ pub fn four_base_charge() -> BuildOrder {
             name: "Build twilight council".to_string(),
             start_conditions: vec![
                 StructureComplete(UnitTypeId::CyberneticsCore),
-                AtLeastCount(UnitTypeId::Nexus, 1),
+                AtLeastCount(UnitTypeId::Nexus, 2),
             ],
             end_conditions: vec![AtLeastCount(UnitTypeId::TwilightCouncil, 1)],
             action: Construct(UnitTypeId::TwilightCouncil),
@@ -284,7 +284,7 @@ pub fn four_base_charge() -> BuildOrder {
             name: "Reseach charge".to_string(),
             start_conditions: vec![
                 StructureComplete(UnitTypeId::TwilightCouncil),
-                AtLeastCount(UnitTypeId::Nexus, 1),
+                AtLeastCount(UnitTypeId::Nexus, 2),
             ],
             end_conditions: vec![TechComplete(UpgradeId::Charge)],
             action: Research(

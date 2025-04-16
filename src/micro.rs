@@ -37,11 +37,11 @@ impl ResourceSite {
             tag: unit.tag(),
         }
     }
-    const fn harvesters(&self) -> u32 {
+    const fn harvesters(&self) -> usize {
         match self.resource {
             MinerAsset::Gas => 3,
             MinerAsset::Minerals => 2,
-            MinerAsset::Townhall => 1,
+            MinerAsset::Townhall => 0,
         }
     }
 }
@@ -124,6 +124,7 @@ pub enum MiningError {
     NotTownhall(Tag),
     NoTownhalls,
     NoResources,
+    AlreadyEmployed(u64),
 }
 
 impl MinerManager {
@@ -146,18 +147,24 @@ impl MinerManager {
         self.miners.keys()
     }
 
-    pub fn saturation(&self) ->(usize,usize,usize,usize) {
+    pub fn saturation(&self) -> (usize, usize, usize, usize) {
         let mut mineral_max = 0;
         let mut mineral_assigned = 0;
         let mut gas_max = 0;
         let mut gas_assigned = 0;
-        for (asset, count) in self.resource_assignment_counts.iter() {
-if let Some(rs) =self.assets.get(asset) {
-if rs.is_gas(){gas_max += rs.harvesters(); gas_assigned += count;} else {mineral_max += rd.harvesters(); mineral_assigned += count;}
-}
-}
-(mineral_assigned, mineral_max,gas_assigned, gas_max)
-}
+        for (asset, rs) in self.assets.iter() {
+            let count = self.resource_assignment_counts.get(asset).unwrap_or(&0);
+            if rs.is_gas() {
+                gas_max += rs.harvesters();
+                gas_assigned += count;
+            } else {
+                mineral_max += rs.harvesters();
+                mineral_assigned += count;
+            }
+        }
+
+        (mineral_max, mineral_assigned, gas_max, gas_assigned)
+    }
 
     pub fn available_jobs(&self) -> usize {
         self.assets
@@ -215,20 +222,27 @@ if rs.is_gas(){gas_max += rs.harvesters(); gas_assigned += count;} else {mineral
             // we have no townhalls
             return Err(MiningError::NoTownhalls);
         }
+        if self.miners.contains_key(&miner) {
+            return Err(MiningError::AlreadyEmployed(miner));
+        }
 
         let job = self.find_job().transpose();
         if let Some(maybe_error) = job {
             let new_job = maybe_error?;
-            *self
-                .resource_assignment_counts
-                .entry(new_job.resource.tag)
-                .or_insert(0) += 1;
-
-            self.miners.insert(miner, (new_job, MinerMicroState::Idle));
+            self.assign_job_to_miner(miner, new_job);
             Ok(())
         } else {
             Err(MiningError::NoResources)
         }
+    }
+
+    fn assign_job_to_miner(&mut self, miner: u64, assignment: MinerAssignment) {
+        *self
+            .resource_assignment_counts
+            .entry(assignment.resource.tag)
+            .or_insert(0) += 1;
+        self.miners
+            .insert(miner, (assignment, MinerMicroState::Idle));
     }
 
     fn find_job(&self) -> Result<Option<MinerAssignment>, MiningError> {
@@ -260,8 +274,8 @@ if rs.is_gas(){gas_max += rs.harvesters(); gas_assigned += count;} else {mineral
         count: usize,
     ) -> Result<Option<MinerAssignment>, MiningError> {
         let job = {
-            let harvesters: u32 = resource.harvesters();
-            if count < harvesters as usize {
+            let harvesters = resource.harvesters();
+            if count < harvesters {
                 let nearest_townhall = self
                     .assets
                     .values()
@@ -292,7 +306,7 @@ if rs.is_gas(){gas_max += rs.harvesters(); gas_assigned += count;} else {mineral
     }
     pub fn add_resource_site(&mut self, site: ResourceSite) {
         self.assets.insert(site.tag, site);
-}
+    }
     pub fn add_resource(&mut self, unit: &Unit) -> Result<(), MiningError> {
         if unit.is_mineral() || unit.is_geyser() {
             self.add_resource_site(ResourceSite::from_unit(unit));
@@ -304,7 +318,7 @@ if rs.is_gas(){gas_max += rs.harvesters(); gas_assigned += count;} else {mineral
 
     pub fn add_townhall(&mut self, unit: &Unit) -> Result<(), MiningError> {
         if unit.is_townhall() {
-            self.add_resource_site( ResourceSite::from_unit(unit));
+            self.add_resource_site(ResourceSite::from_unit(unit));
             Ok(())
         } else {
             Err(MiningError::NotTownhall(Tag::from_unit(unit)))
@@ -418,7 +432,13 @@ mod tests {
     use super::*;
 
     fn init_miner() -> MinerManager {
-        MinerManager::default()
+        let mut mm = MinerManager::default();
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Townhall,
+            tag: 999999,
+        });
+        mm
     }
 
     #[test]
@@ -428,45 +448,57 @@ mod tests {
         assert!(mm.employ_miner(1).is_err());
     }
     #[test]
-    fn add_three_to_patch(){
+    fn add_three_to_patch() {
         let mut mm = init_miner();
         mm.add_resource_site(ResourceSite {
-location:Point2::new(0.0,0.0),
-resource: MinerAsset::Minerals,
-tag:999,
-});
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Minerals,
+            tag: 999,
+        });
         assert!(mm.assign_miner(1).is_ok());
         assert!(mm.assign_miner(2).is_ok());
         assert!(mm.assign_miner(3).is_err());
-}
+    }
 
-     #[test]
-     fn add_four_to_gas(){
+    #[test]
+    fn add_to_patch_twice() {
         let mut mm = init_miner();
         mm.add_resource_site(ResourceSite {
-location:Point2::new(0.0,0.0),
-resource: MinerAsset::Gas,
-tag:999,
-});
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Minerals,
+            tag: 999,
+        });
+        assert!(mm.assign_miner(1).is_ok());
+        assert!(mm.assign_miner(1).is_err());
+    }
+
+    #[test]
+    fn add_four_to_gas() {
+        let mut mm = init_miner();
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Gas,
+            tag: 999,
+        });
         assert!(mm.assign_miner(1).is_ok());
         assert!(mm.assign_miner(2).is_ok());
         assert!(mm.assign_miner(3).is_ok());
 
-        assert_eq!(mm.available_jobs(),0);
+        assert_eq!(mm.saturation(), (0, 0, 3, 3));
         assert!(mm.assign_miner(4).is_err());
-        
-}
+    }
 
-     #[test]
-     fn add_and_remove() {
-     let mut mm = init_miner();
+    #[test]
+    fn add_and_remove_resource() {
+        let mut mm = init_miner();
         mm.add_resource_site(ResourceSite {
-location:Point2::new(0.0,0.0),
-resource: MinerAsset::Minerals,
-tag:999,
-});
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Minerals,
+            tag: 999,
+        });
         assert!(mm.assign_miner(1).is_ok());
-        assert!(mm.remove_resource(999, true).is_ok());
-        assert_eq!(mm.employed_miners().count(),0);
-}
+        assert_eq!(mm.remove_resource(999, true).len(), 1);
+        assert_eq!(mm.employed_miners().count(), 0);
+        assert_eq!(mm.saturation(), (0, 0, 0, 0));
+    }
 }

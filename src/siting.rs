@@ -879,8 +879,9 @@ impl ReBiCycler {
     pub fn back_to_work(&mut self, worker: u64) {
         if let Err(e) = self.mining_manager.assign_miner(worker) {
             self.log_error(format!(
-                "Can't employ worker: {:?}|{:?}",
-                e, self.mining_manager
+                "Can't employ worker: {:?}| {:?}",
+                e,
+                self.mining_manager.saturation()
             ));
         }
     }
