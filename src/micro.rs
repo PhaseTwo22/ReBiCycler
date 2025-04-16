@@ -146,6 +146,19 @@ impl MinerManager {
         self.miners.keys()
     }
 
+    pub fn saturation(&self) ->(usize,usize,usize,usize) {
+        let mut mineral_max = 0;
+        let mut mineral_assigned = 0;
+        let mut gas_max = 0;
+        let mut gas_assigned = 0;
+        for (asset, count) in self.resource_assignment_counts.iter() {
+if let Some(rs) =self.assets.get(asset) {
+if rs.is_gas(){gas_max += rs.harvesters(); gas_assigned += count;} else {mineral_max += rd.harvesters(); mineral_assigned += count;}
+}
+}
+(mineral_assigned, mineral_max,gas_assigned, gas_max)
+}
+
     pub fn available_jobs(&self) -> usize {
         self.assets
             .values()
