@@ -756,11 +756,18 @@ impl ReBiCycler {
             .my
             .workers
             .closest(position.location)
-            .ok_or(BuildError::NoTrainer)?;
+            .ok_or(BuildError::NoTrainer)?
+            .clone();
+
+        let builder_tag = builder.tag();
+        let builder_conscripted = self.mining_manager.remove_miner(builder_tag);
 
         builder.build(structure_type, position.location, false);
-
-        self.mining_manager.remove_miner(builder.tag());
+        if builder_conscripted {
+            self.log_error(format!(
+                "took builder {builder_tag} from mining to build {structure_type:?}"
+            ));
+        }
         Ok(())
     }
     /// Tells a base with a free geyser to build an assimilator.
@@ -870,7 +877,7 @@ impl ReBiCycler {
             BuildingTransition::Obstruct
         } else {
             // this is a new result that I haven't seen before
-            println!("Location {point:?} is blocked: {result:?}");
+            println!("Location {point:?} for {structure_type:?} is blocked: {result:?}");
             BuildingTransition::Obstruct
         }
     }

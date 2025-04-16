@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 const MINERAL_MINE_DISTANCE: f32 = 1.0;
 const GAS_MINE_DISTANCE: f32 = 2.5;
-const RETURN_CARGO_DISTANCE: f32 = 3.0;
+const RETURN_CARGO_DISTANCE: f32 = 2.9;
 
 #[derive(Debug, Clone)]
 pub struct ResourceSite {
@@ -128,17 +128,6 @@ pub enum MiningError {
 }
 
 impl MinerManager {
-    pub fn micro(&mut self, units: &Units) {
-        let errors: Vec<MicroError> = self.update_miners(units);
-        for e in errors {
-            if let Err(second_error) = match e {
-                MicroError::UnitNotRegistered(tag) => self.employ_miner(tag.tag),
-            } {
-                println!("Unable to resolve error within MinerManager: {second_error:?}");
-            };
-        }
-        self.micro_miners(units);
-    }
     pub fn assign_miner(&mut self, miner: u64) -> Result<(), MiningError> {
         self.employ_miner(miner)
     }
@@ -152,7 +141,7 @@ impl MinerManager {
         let mut mineral_assigned = 0;
         let mut gas_max = 0;
         let mut gas_assigned = 0;
-        for (asset, rs) in self.assets.iter() {
+        for (asset, rs) in &self.assets {
             let count = self.resource_assignment_counts.get(asset).unwrap_or(&0);
             if rs.is_gas() {
                 gas_max += rs.harvesters();
@@ -340,6 +329,18 @@ impl MinerManager {
         )
     }
 
+    pub fn micro(&mut self, units: &Units) {
+        let errors: Vec<MicroError> = self.update_miners(units);
+        for e in errors {
+            if let Err(second_error) = match e {
+                MicroError::UnitNotRegistered(tag) => self.employ_miner(tag.tag),
+            } {
+                println!("Unable to resolve error within MinerManager: {second_error:?}");
+            };
+        }
+        self.micro_miners(units);
+    }
+
     fn update_miners<'a>(&'a mut self, my_units: &'a Units) -> Vec<MicroError> {
         my_units
             .iter()
@@ -392,7 +393,7 @@ fn worker_update(
 ) -> MinerMicroState {
     match (unit.is_carrying_resource(), state) {
         (true, MinerMicroState::ReturnMove(point)) => {
-            if unit.position().distance(point) < 0.1 {
+            if unit.position().distance(point) < RETURN_CARGO_DISTANCE {
                 MinerMicroState::ReturnCargo
             } else {
                 MinerMicroState::ReturnMove(point)
@@ -410,7 +411,7 @@ fn worker_update(
             ))
         }
         (false, MinerMicroState::GatherMove(point)) => {
-            if unit.position().distance(point) < 0.1 {
+            if unit.position().distance(point) < GAS_MINE_DISTANCE {
                 MinerMicroState::Gather
             } else {
                 MinerMicroState::GatherMove(point)
@@ -436,7 +437,7 @@ mod tests {
         mm.add_resource_site(ResourceSite {
             location: Point2::new(0.0, 0.0),
             resource: MinerAsset::Townhall,
-            tag: 999999,
+            tag: 999_999,
         });
         mm
     }
@@ -500,5 +501,135 @@ mod tests {
         assert_eq!(mm.remove_resource(999, true).len(), 1);
         assert_eq!(mm.employed_miners().count(), 0);
         assert_eq!(mm.saturation(), (0, 0, 0, 0));
+    }
+
+    #[test]
+    fn add_two_townhalls() {
+        let mut mm = MinerManager::default();
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Townhall,
+            tag: 999_999,
+        });
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Townhall,
+            tag: 999_998,
+        });
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Minerals,
+            tag: 999,
+        });
+        assert!(mm.assign_miner(1).is_ok());
+        assert!(mm.assign_miner(2).is_ok());
+        assert!(mm.assign_miner(3).is_err());
+
+        assert_eq!(
+            format!("Patches: {}:{} | Gasses: {}:{}", 1, 2, 0, 0),
+            format!("{}", mm)
+        );
+    }
+
+    #[test]
+    fn add_remove_addback() {
+        let mut mm = init_miner();
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(0.0, 0.0),
+            resource: MinerAsset::Minerals,
+            tag: 999,
+        });
+
+        for i in 0..2 {
+            mm.add_resource_site(ResourceSite {
+                location: Point2::new(0.0, 0.0),
+                resource: MinerAsset::Gas,
+                tag: 10_000 + i,
+            });
+        }
+        assert!(mm.assign_miner(1).is_ok());
+        for _ in 0..10 {
+            assert!(mm.remove_miner(1));
+            assert!(mm.assign_miner(1).is_ok());
+        }
+        assert_eq!(mm.saturation(), (2, 1, 6, 0));
+        assert_eq!(mm.resource_assignment_counts.values().sum::<usize>(), 1);
+    }
+
+    #[test]
+    fn simulate_game() {
+        let mut mm = init_miner();
+        for i in 0..8 {
+            mm.add_resource_site(ResourceSite {
+                location: Point2::new(0.0, 0.0),
+                resource: MinerAsset::Minerals,
+                tag: 1_000 + i,
+            });
+        }
+        assert_eq!(mm.saturation(), (16, 0, 0, 0));
+
+        for i in 0..12 {
+            assert!(mm.assign_miner(i).is_ok());
+        }
+        assert_eq!(mm.saturation(), (16, 12, 0, 0));
+
+        for i in 0..4 {
+            assert!(mm.assign_miner(12 + i).is_ok());
+        }
+        assert_eq!(mm.saturation(), (16, 16, 0, 0));
+
+        assert!(matches!(mm.assign_miner(16), Err(MiningError::NoResources)));
+
+        assert!(mm.remove_miner(15));
+        assert!(mm.assign_miner(15).is_ok());
+        assert!(mm.assign_miner(16).is_err());
+
+        assert_eq!(
+            format!("Patches: {}:{} | Gasses: {}:{}", 8, 16, 0, 0),
+            format!("{}", mm)
+        );
+        assert_eq!(mm.saturation(), (16, 16, 0, 0));
+
+        for i in 0..2 {
+            mm.add_resource_site(ResourceSite {
+                location: Point2::new(0.0, 0.0),
+                resource: MinerAsset::Gas,
+                tag: 10_000 + i,
+            });
+        }
+        assert_eq!(mm.saturation(), (16, 16, 6, 0));
+
+        for i in 0..6 {
+            assert!(mm.assign_miner(16 + i).is_ok());
+        }
+        assert_eq!(mm.saturation(), (16, 16, 6, 6));
+        assert_eq!(
+            format!("Patches: {}:{} | Gasses: {}:{}", 8, 16, 2, 6),
+            format!("{}", mm)
+        );
+
+        assert!(mm.assign_miner(22).is_err());
+
+        mm.add_resource_site(ResourceSite {
+            location: Point2::new(10.0, 0.0),
+            resource: MinerAsset::Townhall,
+            tag: 999_999 + 1,
+        });
+        for i in 0..8 {
+            mm.add_resource_site(ResourceSite {
+                location: Point2::new(0.0, 0.0),
+                resource: MinerAsset::Minerals,
+                tag: 1_008 + i,
+            });
+        }
+
+        for i in 0..16 {
+            assert!(mm.assign_miner(22 + i).is_ok());
+        }
+        assert_eq!(mm.saturation(), (32, 32, 6, 6));
+        assert_eq!(
+            format!("Patches: {}:{} | Gasses: {}:{}", 16, 32, 2, 6),
+            format!("{}", mm)
+        );
     }
 }

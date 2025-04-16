@@ -1,3 +1,4 @@
+
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
 use crate::errors::BuildError;
@@ -47,7 +48,9 @@ impl Player for ReBiCycler {
             self.step_build();
         }
 
-        //self.micro();
+        let miner_tags = self.mining_manager.employed_miners();
+        let workers = self.units.my.workers.find_tags(miner_tags);
+        // self.mining_manager.micro(&workers);
         if frame_no % 250 == 0 {
             self.monitor(frame_no);
         };
@@ -186,6 +189,16 @@ impl ReBiCycler {
             if unit.type_id() == UnitTypeId::Probe && self.game_started {
                 self.back_to_work(unit_tag);
             }
+            let nearest_nexus_loc = self
+                .units
+                .my
+                .townhalls
+                .closest(unit.position())
+                .unwrap()
+                .position();
+            let distance = nearest_nexus_loc.distance(unit.position());
+            self.display_terminal
+                .write_line_to_footer(&format!("Probe created {distance:.3} from nexus."));
         } else {
             self.log_error(format!("UnitCreated but unit not found! {unit_tag}"));
         }
