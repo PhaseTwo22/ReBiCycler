@@ -277,11 +277,12 @@ impl MinerManager {
             self.priority = resource;
         }
     }
-
+    pub fn add_resource_site(&mut self, site: ResourceSite) {
+        self.assets.insert(site.tag, site);
+}
     pub fn add_resource(&mut self, unit: &Unit) -> Result<(), MiningError> {
         if unit.is_mineral() || unit.is_geyser() {
-            self.assets
-                .insert(unit.tag(), ResourceSite::from_unit(unit));
+            self.add_resource_site(ResourceSite::from_unit(unit));
             Ok(())
         } else {
             Err(MiningError::NotHarvestable(Tag::from_unit(unit)))
@@ -290,8 +291,7 @@ impl MinerManager {
 
     pub fn add_townhall(&mut self, unit: &Unit) -> Result<(), MiningError> {
         if unit.is_townhall() {
-            self.assets
-                .insert(unit.tag(), ResourceSite::from_unit(unit));
+            self.add_resource_site( ResourceSite::from_unit(unit));
             Ok(())
         } else {
             Err(MiningError::NotTownhall(Tag::from_unit(unit)))
@@ -414,4 +414,46 @@ mod tests {
 
         assert!(mm.employ_miner(1).is_err());
     }
+    #[test]
+    fn add_three_to_patch(){
+        let mut mm = init_miner();
+        mm.add_resource_site(ResourceSite {
+location:Point2::new(0.0,0.0),
+resource: MinerAsset::Minerals,
+tag:999,
+});
+        assert!(mm.assign_miner(1).is_ok());
+        assert!(mm.assign_miner(2).is_ok());
+        assert!(mm.assign_miner(3).is_err());
+}
+
+     #[test]
+     fn add_four_to_gas(){
+        let mut mm = init_miner();
+        mm.add_resource_site(ResourceSite {
+location:Point2::new(0.0,0.0),
+resource: MinerAsset::Gas,
+tag:999,
+});
+        assert!(mm.assign_miner(1).is_ok());
+        assert!(mm.assign_miner(2).is_ok());
+        assert!(mm.assign_miner(3).is_ok());
+
+        assert_eq!(mm.available_jobs(),0);
+        assert!(mm.assign_miner(4).is_err());
+        
+}
+
+     #[test]
+     fn add_and_remove() {
+     let mut mm = init_miner();
+        mm.add_resource_site(ResourceSite {
+location:Point2::new(0.0,0.0),
+resource: MinerAsset::Minerals,
+tag:999,
+});
+        assert!(mm.assign_miner(1).is_ok());
+        assert!(mm.remove_resource(999, true).is_ok());
+        assert_eq!(mm.employed_miners().count(),0);
+}
 }
