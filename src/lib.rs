@@ -1,8 +1,10 @@
 use rust_sc2::prelude::*;
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
+
 mod base_manager;
 mod build_order_manager;
 mod build_orders;
+mod build_tree;
 mod construction;
 mod errors;
 mod knowledge;
@@ -227,7 +229,8 @@ where
     map.insert(key, new_count);
 }
 
-#[must_use] pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering {
+#[must_use]
+pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering {
     let d2p1 = anchor.distance(p1);
     let d2p2 = anchor.distance(p2);
     d2p1.total_cmp(&d2p2)
