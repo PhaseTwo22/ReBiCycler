@@ -34,6 +34,7 @@ pub enum ComponentState {
     NotYetStarted,
     Active,
     Completed,
+    Restricted,
 }
 
 impl Display for ComponentState {
@@ -42,6 +43,7 @@ impl Display for ComponentState {
             Self::NotYetStarted => "➖",
             Self::Active => "⏳",
             Self::Completed => "✅",
+            Self::Restricted => "❌",
         }
         .to_string();
         write!(f, "{out}")

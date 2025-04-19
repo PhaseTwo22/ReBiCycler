@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction, ComponentState},
     protoss_bot::ReBiCycler,
@@ -96,7 +98,7 @@ impl ConditionGroup {
 
 /// Operator for logically combining `BuildConditions`
 #[derive(Clone)]
-enum ConditionOperator {
+pub enum ConditionOperator {
     All,
     NotAll,
     Any,
@@ -105,7 +107,7 @@ enum ConditionOperator {
 }
 
 impl BuildOrderTree {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { nodes: Vec::new() }
     }
 
@@ -129,7 +131,7 @@ impl BuildOrderTree {
         parent: usize,
     ) -> Result<usize, TreeError> {
         if parent >= self.nodes.len() {
-            return Err(TreeError::ParentNotInTree);
+            return Err(TreeError::NodeNotInTree);
         }
         let index = self.nodes.len();
         let new_node = TreeNode {
@@ -146,11 +148,66 @@ impl BuildOrderTree {
     fn len(&self) -> usize {
         self.nodes.len()
     }
+
+    fn get(&self, node: usize) -> Result<&TreeNode, TreeError> {
+        self.nodes.get(node).ok_or(TreeError::NodeNotInTree)
+    }
+
+    fn get_mut(&mut self, node: usize) -> Result<&mut TreeNode, TreeError> {
+        self.nodes.get_mut(node).ok_or(TreeError::NodeNotInTree)
+    }
+
+    pub fn breadth_first(&self, start_at: usize) -> Vec<usize> {
+        let mut visits = Vec::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(start_at);
+
+        while let Some(next) = queue.pop_front() {
+            let node = self.get(next);
+            visits.push(next);
+
+            match node {
+                Ok(treenode) => {
+                    queue.extend(treenode.children.iter());
+                }
+                Err(TreeError::NodeNotInTree) => println!("wtf"),
+                Err(TreeError::TreeNotEmpty) => println!("wtf"),
+            }
+        }
+
+        visits
+    }
+
+    pub fn depth_first(&self, start_at: usize) -> Vec<usize> {
+        let mut visits = Vec::new();
+        let mut queue = VecDeque::new();
+        queue.push_front(start_at);
+
+        while let Some(next) = queue.pop_front() {
+            let node = self.get(next);
+            visits.push(next);
+
+            match node {
+                Ok(treenode) => {
+                    let _: () = treenode
+                        .children
+                        .iter()
+                        .map(|c| queue.push_front(*c))
+                        .collect();
+                }
+                Err(TreeError::NodeNotInTree) => println!("wtf"),
+                Err(TreeError::TreeNotEmpty) => println!("wtf"),
+            }
+        }
+
+        visits
+    }
 }
 
 enum TreeError {
     TreeNotEmpty,
-    ParentNotInTree,
+
+    NodeNotInTree,
 }
 
 impl ReBiCycler {
@@ -176,6 +233,23 @@ impl ReBiCycler {
 mod tests {
     use super::*;
 
+    fn blank_component() -> BuildComponent {
+        BuildComponent::new(
+            "child",
+            &[ConditionGroup::new(
+                &[BuildCondition::Always],
+                ConditionOperator::All,
+            )],
+            &[ConditionGroup::new(
+                &[BuildCondition::Always],
+                ConditionOperator::All,
+            )],
+            true,
+            None,
+            true,
+        )
+    }
+
     #[test]
     fn add_a_root() {
         let mut tree = BuildOrderTree::new();
@@ -186,26 +260,34 @@ mod tests {
     fn add_a_child() {
         let mut tree = BuildOrderTree::new();
         assert!(tree.add_first_node(BuildComponent::root()).is_ok());
-        assert!(tree
-            .add_node(
-                BuildComponent::new(
-                    "child",
-                    &[ConditionGroup::new(
-                        &[BuildCondition::Always],
-                        ConditionOperator::All
-                    )],
-                    &[ConditionGroup::new(
-                        &[BuildCondition::Always],
-                        ConditionOperator::All
-                    )],
-                    true,
-                    None,
-                    true
-                ),
-                0
-            )
-            .is_ok());
+        assert!(tree.add_node(blank_component(), 0).is_ok());
 
-        assert_eq!(tree.len(), 2)
+        assert_eq!(tree.len(), 2);
+    }
+
+    #[test]
+    fn breadth_first_order_ok() {
+        let mut tree = BuildOrderTree::new();
+        assert!(tree.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), 0).is_ok()); // 1
+        assert!(tree.add_node(blank_component(), 1).is_ok()); // 2
+        assert!(tree.add_node(blank_component(), 2).is_ok()); // 3
+        assert!(tree.add_node(blank_component(), 0).is_ok()); // 4
+        assert!(tree.add_node(blank_component(), 0).is_ok()); // 5
+
+        assert_eq!(tree.breadth_first(0), vec![0, 1, 4, 5, 2, 3])
+    }
+    #[test]
+    fn depth_first_order_ok() {
+        let mut tree = BuildOrderTree::new();
+        assert!(tree.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), 0).is_ok()); // 1
+        assert!(tree.add_node(blank_component(), 1).is_ok()); // 2
+        assert!(tree.add_node(blank_component(), 2).is_ok()); // 3
+        assert!(tree.add_node(blank_component(), 0).is_ok()); // 4
+        assert!(tree.add_node(blank_component(), 0).is_ok()); // 5
+        assert!(tree.add_node(blank_component(), 5).is_ok()); // 6
+
+        assert_eq!(tree.depth_first(0), vec![0, 5, 6, 4, 1, 2, 3])
     }
 }
