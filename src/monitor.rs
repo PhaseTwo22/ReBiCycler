@@ -174,8 +174,14 @@ impl ReBiCycler {
 
     fn display_build_order(&mut self) {
         for boc in self.build_order.iter() {
-            let should_start = self.evaluate_conditions(&boc.start_conditions);
-            let should_end = self.evaluate_conditions(&boc.end_conditions);
+            let should_start = boc
+                .start_conditions
+                .iter()
+                .all(|c| self.evaluate_condition(c));
+            let should_end = boc
+                .end_conditions
+                .iter()
+                .all(|c| self.evaluate_condition(c));
             let icon = match (should_start, should_end) {
                 (_, true) => "✅",
                 (false, false) => "➖",

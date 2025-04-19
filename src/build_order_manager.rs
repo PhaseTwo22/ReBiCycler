@@ -28,12 +28,16 @@ impl ReBiCycler {
     }
 
     fn progress_build(&mut self) {
-        let started_tasks = self
-            .build_order
-            .iter()
-            .filter(|boc| self.evaluate_conditions(&boc.start_conditions));
-        let started_and_not_finished =
-            started_tasks.filter(|boc| !self.evaluate_conditions(&boc.end_conditions));
+        let started_tasks = self.build_order.iter().filter(|boc| {
+            boc.start_conditions
+                .iter()
+                .all(|c| self.evaluate_condition(c))
+        });
+        let started_and_not_finished = started_tasks.filter(|boc| {
+            !boc.end_conditions
+                .iter()
+                .all(|c| self.evaluate_condition(c))
+        });
 
         let valid_and_doable: Vec<BuildOrderAction> = started_and_not_finished
             .filter_map(|boc| {
@@ -101,8 +105,8 @@ impl ReBiCycler {
         }
     }
 
-    pub fn evaluate_conditions(&self, conditions: &[BuildCondition]) -> bool {
-        conditions.iter().all(|condition| match condition {
+    pub fn evaluate_condition(&self, condition: &BuildCondition) -> bool {
+        match condition {
             BuildCondition::DontHaveAnyDone(unit) => self.counter().count(*unit) == 0,
             BuildCondition::DontHaveAnyStarted(unit) => self.counter().ordered().count(*unit) == 0,
             BuildCondition::SupplyAtLeast(supply) => self.supply_used >= *supply,
@@ -131,7 +135,8 @@ impl ReBiCycler {
                 self.counter().all().count(*unit_type) >= *desired_count
             }
             BuildCondition::Never => false,
-        })
+            BuildCondition::Always => true,
+        }
     }
 
     fn attempt_build_action(&mut self, action: BuildOrderAction) {

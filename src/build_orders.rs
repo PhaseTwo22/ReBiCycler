@@ -15,6 +15,7 @@ pub enum BuildCondition {
     AtLeastCount(UnitTypeId, usize),
     DontHaveAnyDone(UnitTypeId),
     DontHaveAnyStarted(UnitTypeId),
+    Always,
     Never,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
