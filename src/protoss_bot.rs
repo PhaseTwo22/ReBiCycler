@@ -1,4 +1,3 @@
-
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
 use crate::errors::BuildError;
@@ -46,18 +45,18 @@ impl Player for ReBiCycler {
 
         if frame_no % 50 == 0 {
             self.step_build();
+            //self.map_worker_activity(frame_no);
         }
 
         let miner_tags = self.mining_manager.employed_miners();
         let workers = self.units.my.workers.find_tags(miner_tags);
-        // self.mining_manager.micro(&workers);
+        self.mining_manager.micro(&workers);
         if frame_no % 250 == 0 {
             self.monitor(frame_no);
         };
 
         if frame_no % 1000 == 0 {
             self.map_siting(frame_no);
-            self.map_worker_activity(frame_no);
         }
 
         Ok(())
