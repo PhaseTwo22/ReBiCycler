@@ -9,7 +9,8 @@ use crate::{
 };
 
 /// an arena-based tree structure to store my build order(s).
-struct BuildOrderTree {
+#[derive(Default)]
+pub struct BuildOrderTree {
     /// The arena for all the nodes to live in
     nodes: Vec<TreeNode>,
     roots: Vec<usize>,
@@ -23,7 +24,7 @@ struct TreeNode {
     value: BuildComponent,
 }
 
-struct BuildComponent {
+pub struct BuildComponent {
     /// Conditions that signal the activation of this node
     start: Vec<ConditionGroup>,
     /// Conditions that end the activation of this node
@@ -226,6 +227,16 @@ impl BuildOrderTree {
             Ok(0)
         }
     }
+
+    fn restrict_descendants(&mut self, of_node: usize) -> Result<(), TreeError> {
+        let node = self.get_mut(of_node)?;
+        node.value.state = ComponentState::Restricted;
+
+        for child in &node.children.clone() {
+            self.restrict_descendants(*child)?;
+        }
+        Ok(())
+    }
 }
 
 impl Display for BuildOrderTree {
@@ -256,13 +267,13 @@ impl Display for BuildOrderTree {
     }
 }
 #[derive(Debug)]
-enum TreeError {
+pub enum TreeError {
     TreeNotEmpty,
     NodeNotInTree,
 }
 
 impl ReBiCycler {
-    fn evaluate_condition_group(&self, condition_group: ConditionGroup) -> bool {
+    fn evaluate_condition_group(&self, condition_group: &ConditionGroup) -> bool {
         let mut iter = condition_group.conditions.iter();
         let evaluator = |c| self.evaluate_condition(c);
         match condition_group.operator {
@@ -279,9 +290,59 @@ impl ReBiCycler {
         }
     }
 
-    //     fn update_build_order_progress(&mut self, bot: BuildOrderTree) {
-    //         bot.breadth_first(0)
+    fn evaluate_build_component(&self, component: &BuildComponent) -> (bool, bool) {
+        let start_status = component
+            .start
+            .iter()
+            .all(|cg| self.evaluate_condition_group(cg));
+        let end_status = component
+            .end
+            .iter()
+            .all(|cg| self.evaluate_condition_group(cg));
+        (start_status, end_status)
+    }
+
+    // fn update_build_order_progress(&mut self, bot: BuildOrderTree) {
+    //     for root in bot.roots.clone().iter() {
+    //         let active_node = *root;
+    //         let pruned = false;
+
+    //         self.evaluate_condition_group(condition_group)
     //     }
+    // }
+
+    fn update_walk(&mut self, index: usize) -> Result<Vec<usize>, TreeError> {
+        let restrict = self.update_component(index)?;
+
+        let mut out = vec![index];
+        if restrict {
+            self.build_order_tree.restrict_descendants(index);
+        } else {
+            for child in &self.build_order_tree.get(index)?.children.clone() {
+                let descendants = self.update_walk(*child)?;
+                out.extend(descendants);
+            }
+        }
+        Ok(out)
+    }
+
+    fn update_component(&mut self, index: usize) -> Result<bool, TreeError> {
+        let node = self.build_order_tree.get(index)?;
+        let (start, end) = self.evaluate_build_component(&node.value);
+        let should_activate = start && !end;
+        let should_restrict = !end && node.value.restrictive;
+
+        if should_restrict {
+            self.build_order_tree.restrict_descendants(index)?;
+        }
+
+        let node = self.build_order_tree.get_mut(index)?;
+        if should_activate {
+            node.value.state = ComponentState::Active;
+        }
+
+        Ok(should_restrict)
+    }
 }
 
 #[cfg(test)]
@@ -402,30 +463,36 @@ mod tests {
         ];
 
         assert!(
-            rebi.evaluate_condition_group(ConditionGroup::new(all_good, ConditionOperator::All))
+            rebi.evaluate_condition_group(&ConditionGroup::new(all_good, ConditionOperator::All))
         );
         assert!(
-            !rebi.evaluate_condition_group(ConditionGroup::new(one_off, ConditionOperator::All))
+            !rebi.evaluate_condition_group(&ConditionGroup::new(one_off, ConditionOperator::All))
         );
 
         assert!(
-            rebi.evaluate_condition_group(ConditionGroup::new(all_good, ConditionOperator::Any))
+            rebi.evaluate_condition_group(&ConditionGroup::new(all_good, ConditionOperator::Any))
         );
-        assert!(rebi.evaluate_condition_group(ConditionGroup::new(one_off, ConditionOperator::Any)));
+        assert!(
+            rebi.evaluate_condition_group(&ConditionGroup::new(one_off, ConditionOperator::Any))
+        );
 
         assert!(!rebi
-            .evaluate_condition_group(ConditionGroup::new(all_good, ConditionOperator::NoneOf)));
-        assert!(
-            !rebi.evaluate_condition_group(ConditionGroup::new(one_off, ConditionOperator::NoneOf))
-        );
+            .evaluate_condition_group(&ConditionGroup::new(all_good, ConditionOperator::NoneOf)));
+        assert!(!rebi
+            .evaluate_condition_group(&ConditionGroup::new(one_off, ConditionOperator::NoneOf)));
 
-        assert!(!rebi.evaluate_condition_group(ConditionGroup::new(
+        assert!(!rebi.evaluate_condition_group(&ConditionGroup::new(
             all_good,
             ConditionOperator::ExactlyNOf(2)
         )));
-        assert!(rebi.evaluate_condition_group(ConditionGroup::new(
+        assert!(rebi.evaluate_condition_group(&ConditionGroup::new(
             one_off,
             ConditionOperator::ExactlyNOf(2)
         )));
+    }
+
+    #[test]
+    fn evaluate_works() {
+        let mut rebi = ReBiCycler::default();
     }
 }

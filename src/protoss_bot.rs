@@ -1,5 +1,6 @@
 use crate::build_order_manager::BuildOrder;
 use crate::build_orders::four_base_charge;
+use crate::build_tree::BuildOrderTree;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
@@ -11,6 +12,7 @@ use rust_sc2::prelude::*;
 #[bot]
 #[derive(Default)]
 pub struct ReBiCycler {
+    pub build_order_tree: BuildOrderTree,
     pub build_order: BuildOrder,
     pub siting_director: SitingDirector,
     pub knowledge: Knowledge,
