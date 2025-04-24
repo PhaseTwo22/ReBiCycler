@@ -3,6 +3,8 @@ use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
 use crate::{protoss_bot::ReBiCycler, Tag};
 
 impl ReBiCycler {
+    ///transitions a `BuildingLocation` that finished construction to the completed status
+    /// also adds new nexuses and assimilators to the mining manager
     pub fn complete_construction(&mut self, building_tag: u64) {
         let Some(building) = self.units.my.structures.get(building_tag) else {
             println!("ConstructionComplete but unit not found! {building_tag}");
@@ -42,7 +44,8 @@ impl ReBiCycler {
             };
         }
     }
-
+    /// marks a building location as constructing
+    /// and sends all idle workers back to mining
     pub fn start_construction(&mut self, building_tag: u64) {
         let Some(building) = self.units.my.structures.get(building_tag).cloned() else {
             println!("ConstructionStarted but building not found! {building_tag}");
