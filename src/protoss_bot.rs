@@ -12,14 +12,24 @@ use rust_sc2::prelude::*;
 #[bot]
 #[derive(Default)]
 pub struct ReBiCycler {
+    /// A tree data structure for our build orders
     pub build_order_tree: BuildOrderTree,
+    /// a vec data structure for our build order. phasing out
     pub build_order: BuildOrder,
+    /// information about how we want to place buildings. TODO use a grid
     pub siting_director: SitingDirector,
+    /// a place to store persistent knowledge about the game state
     pub knowledge: Knowledge,
+    /// manages workers and executes speed mining
     pub mining_manager: MinerManager,
+    /// a text terminal for what's going on inside the bot.
+    /// gets saved after every game. 
     pub display_terminal: DisplayTerminal,
     game_started: bool,
 }
+
+
+/// These are the methods that the game will call that the bot must implement. They are the entry points into all the code we want to run.
 impl Player for ReBiCycler {
     fn get_player_settings(&self) -> PlayerSettings {
         PlayerSettings::new(Race::Protoss).raw_crop_to_playable_area(true)
@@ -41,7 +51,7 @@ impl Player for ReBiCycler {
         Ok(())
     }
 
-/// called once each step
+/// called each frame of the game
     fn on_step(&mut self, frame_no: usize) -> SC2Result<()> {
         if frame_no == 0 {
             self.first_frame();
@@ -66,7 +76,7 @@ impl Player for ReBiCycler {
 
         Ok(())
     }
-
+/// called each time a particular event happens
     fn on_event(&mut self, event: Event) -> SC2Result<()> {
         match event {
             Event::ConstructionComplete(building_tag) => self.complete_construction(building_tag),
@@ -85,7 +95,7 @@ impl Player for ReBiCycler {
         }
         Ok(())
     }
-
+/// called at the end of the game. maybe also call when surrendering
     fn on_end(&self, _result: GameResult) -> SC2Result<()> {
         let _ = self.display_terminal.save_history("replays/history.txt");
         Ok(())
@@ -102,7 +112,7 @@ impl ReBiCycler {
             ..Default::default()
         }
     }
-
+/// Not everything is ready before the game starts, do stuff that we need everything ready for
     fn first_frame(&mut self) {
         let nearby_minerals: Vec<Unit> = self
             .units
@@ -193,21 +203,12 @@ impl ReBiCycler {
             if unit.type_id() == UnitTypeId::Probe && self.game_started {
                 self.back_to_work(unit_tag);
             }
-            let nearest_nexus_loc = self
-                .units
-                .my
-                .townhalls
-                .closest(unit.position())
-                .unwrap()
-                .position();
-            let distance = nearest_nexus_loc.distance(unit.position());
-            self.display_terminal
-                .write_line_to_footer(&format!("Probe created {distance:.3} from nexus."));
         } else {
             self.log_error(format!("UnitCreated but unit not found! {unit_tag}"));
         }
     }
 
+/// writes errors to our display rather than printing them, so we can stpre and ignore or whatever
     #[allow(clippy::needless_pass_by_value)]
     pub fn log_error(&mut self, message: String) {
         self.display_terminal
