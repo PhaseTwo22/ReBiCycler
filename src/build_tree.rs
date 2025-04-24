@@ -43,24 +43,8 @@ pub struct BuildComponent {
     display: bool,
 }
 impl BuildComponent {
-    fn root() -> Self {
-        Self {
-            start: vec![ConditionGroup::new(
-                &[BuildCondition::Always],
-                ConditionOperator::All,
-            )],
-            end: vec![ConditionGroup::new(
-                &[BuildCondition::Always],
-                ConditionOperator::All,
-            )],
-            name: "ROOT".to_string(),
-            restrictive: false,
-            action: None,
-            state: ComponentState::NotYetStarted,
-            display: false,
-        }
-    }
-    fn new(
+
+    pub fn new(
         name: &str,
         start: &[ConditionGroup],
         end: &[ConditionGroup],
@@ -81,6 +65,7 @@ impl BuildComponent {
 }
 
 impl TreeNode {
+///registers a new child of this node
     fn add_child(&mut self, index: usize) {
         self.children.push(index);
     }
@@ -119,21 +104,7 @@ impl BuildOrderTree {
         }
     }
 
-    pub fn add_first_node(&mut self, root: BuildComponent) -> Result<usize, TreeError> {
-        if !self.nodes.is_empty() {
-            return Err(TreeError::TreeNotEmpty);
-        }
-        let root_component = TreeNode {
-            parent: None,
-            children: Vec::new(),
-            value: root,
-            index: 0,
-        };
-        self.nodes.push(root_component);
-        self.roots.push(0);
-        Ok(0)
-    }
-
+/// adds a node to the tree. if parent is none, adds the node as a root of a new tree
     pub fn add_node(
         &mut self,
         component: BuildComponent,
@@ -171,7 +142,8 @@ impl BuildOrderTree {
     fn get_mut(&mut self, node: usize) -> Result<&mut TreeNode, TreeError> {
         self.nodes.get_mut(node).ok_or(TreeError::NodeNotInTree)
     }
-
+/// returns a vec out indexes forthy
+///e tree in breadth first order
     pub fn breadth_first(&self) -> Vec<usize> {
         let mut visits = Vec::new();
         let mut queue = VecDeque::new();
@@ -195,6 +167,7 @@ impl BuildOrderTree {
         visits
     }
 
+///returns a vec of indexes of the tree in depth first order
     pub fn depth_first(&self) -> Vec<usize> {
         let mut visits = Vec::new();
         let mut queue = VecDeque::new();
@@ -219,7 +192,7 @@ impl BuildOrderTree {
 
         visits
     }
-
+///returns the depth off the given node. 
     fn depth_of(&self, node: usize) -> Result<usize, TreeError> {
         if let Some(parent) = self.get(node)?.parent {
             Ok(self.depth_of(parent)? + 1)
@@ -228,6 +201,7 @@ impl BuildOrderTree {
         }
     }
 
+/// updates all descendants of node to restricted, recursively. 
     fn restrict_descendants(&mut self, of_node: usize) -> Result<(), TreeError> {
         let node = self.get_mut(of_node)?;
         node.value.state = ComponentState::Restricted;
