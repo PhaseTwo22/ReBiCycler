@@ -4,9 +4,13 @@ use rust_sc2::{geometry::Size, pixel_map::Pixel as MapPixel, prelude::UnitsItera
 
 use crate::protoss_bot::ReBiCycler;
 
+/// this module serves to store some tools for visiaulizing the game. running headless linux means we don't get graphics, so we'll need to visualize with our own systems
+
+
 impl ReBiCycler {
+    /// shows worker locations and what they're holding, and saves as an image
     pub fn map_worker_activity(&mut self, frame_no: usize) {
-        let mut image = self.background_map(255);
+        let mut image = self.pathing_map(255);
 
         let worker_color = |holding, a| {
             Rgba(match holding {
@@ -46,7 +50,7 @@ impl ReBiCycler {
         };
     }
     pub fn map_siting(&mut self, frame_no: usize) {
-        let mut image = self.background_map(255);
+        let mut image = self.pathing_map(255);
 
         for (point, bl) in self.siting_director.iter() {
             let contained_points = bl.size().contained_points(*point);
@@ -66,7 +70,7 @@ impl ReBiCycler {
         };
     }
     #[allow(clippy::cast_possible_truncation)]
-    pub fn background_map(&self, a: u8) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    pub fn pathing_map(&self, a: u8) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
         let grid = &self.game_info.pathing_grid;
         let mut image = RgbaImage::new(grid.dim().0 as u32, grid.dim().1 as u32);
         for (i, val) in grid.iter().enumerate() {
