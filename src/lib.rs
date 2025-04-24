@@ -5,6 +5,7 @@ mod base_manager;
 mod build_order_manager;
 mod build_orders;
 mod build_tree;
+mod chatter;
 mod construction;
 mod errors;
 mod knowledge;
