@@ -24,6 +24,8 @@ impl Player for ReBiCycler {
     fn get_player_settings(&self) -> PlayerSettings {
         PlayerSettings::new(Race::Protoss).raw_crop_to_playable_area(true)
     }
+
+/// called once at the start of the game, before the first frame
     fn on_start(&mut self) -> SC2Result<()> {
         self.build_order = four_base_charge();
 
@@ -39,6 +41,7 @@ impl Player for ReBiCycler {
         Ok(())
     }
 
+/// called once each step
     fn on_step(&mut self, frame_no: usize) -> SC2Result<()> {
         if frame_no == 0 {
             self.first_frame();
