@@ -9,6 +9,7 @@ use rust_sc2::{
     units::Units,
 };
 
+/// Stores things we know about the game. 
 #[derive(Default)]
 pub struct Knowledge {
     pub confirmed_dead: HashMap<u64, UnitKnowledge>,
@@ -18,6 +19,7 @@ pub struct Knowledge {
     pub confirmed_enemy_race: Option<Race>,
 }
 
+/// a tidbit of information about a unit. 
 #[derive(Clone)]
 pub struct UnitKnowledge {
     pub type_id: UnitTypeId,
@@ -26,6 +28,7 @@ pub struct UnitKnowledge {
     pub alliance: Alliance,
 }
 impl UnitKnowledge {
+    /// generate relevant information from a unit for storage. 
     fn from_unit(unit: &Unit, frame_no: usize) -> Self {
         Self {
             type_id: unit.type_id(),
@@ -37,6 +40,7 @@ impl UnitKnowledge {
 }
 
 impl crate::protoss_bot::ReBiCycler {
+    /// Called by on_step to update our knowledge of the game state
     pub fn observe(&mut self, frame_no: usize) {
         self.state.action_errors.iter().for_each(|error| {
             println!("Action failed: {error:?}");
@@ -68,9 +72,12 @@ impl crate::protoss_bot::ReBiCycler {
 }
 
 impl Knowledge {
+    /// when we detect a random player's race, store it
     pub fn confirm_race(&mut self, race: Race) {
         self.confirmed_enemy_race = Some(race);
     }
+
+    /// We want to know when we first saw new enemy units. I think this will help us determine when we're being rushed, or benchmark our own build
     pub fn add_newly_seen_units(&mut self, units: &Units, frame_no: usize) {
         let new_units: HashSet<UnitTypeId> = units
             .iter()
@@ -88,6 +95,7 @@ impl Knowledge {
         }
     }
 
+    /// Store knowledge about every unit seen this frame
     pub fn update_seen_units(&mut self, seen_units: &Units, frame_no: usize) {
         for unit in seen_units {
             let new_knowledge = UnitKnowledge::from_unit(unit, frame_no);
@@ -97,6 +105,7 @@ impl Knowledge {
         }
     }
 
+    /// Store info for when a unit is destroyed
     pub fn unit_destroyed(&mut self, unit_tag: u64) -> Result<UnitKnowledge, KnowledgeError> {
         let unit = self
             .seen_units
