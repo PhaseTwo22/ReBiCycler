@@ -43,7 +43,6 @@ pub struct BuildComponent {
     display: bool,
 }
 impl BuildComponent {
-
     pub fn new(
         name: &str,
         start: &[ConditionGroup],
@@ -65,7 +64,7 @@ impl BuildComponent {
 }
 
 impl TreeNode {
-///registers a new child of this node
+    ///registers a new child of this node
     fn add_child(&mut self, index: usize) {
         self.children.push(index);
     }
@@ -104,7 +103,7 @@ impl BuildOrderTree {
         }
     }
 
-/// adds a node to the tree. if parent is none, adds the node as a root of a new tree
+    /// adds a node to the tree. if parent is none, adds the node as a root of a new tree
     pub fn add_node(
         &mut self,
         component: BuildComponent,
@@ -142,8 +141,8 @@ impl BuildOrderTree {
     fn get_mut(&mut self, node: usize) -> Result<&mut TreeNode, TreeError> {
         self.nodes.get_mut(node).ok_or(TreeError::NodeNotInTree)
     }
-/// returns a vec out indexes forthy
-///e tree in breadth first order
+    /// returns a vec out indexes forthy
+    ///e tree in breadth first order
     pub fn breadth_first(&self) -> Vec<usize> {
         let mut visits = Vec::new();
         let mut queue = VecDeque::new();
@@ -167,7 +166,7 @@ impl BuildOrderTree {
         visits
     }
 
-///returns a vec of indexes of the tree in depth first order
+    ///returns a vec of indexes of the tree in depth first order
     pub fn depth_first(&self) -> Vec<usize> {
         let mut visits = Vec::new();
         let mut queue = VecDeque::new();
@@ -192,7 +191,7 @@ impl BuildOrderTree {
 
         visits
     }
-///returns the depth off the given node. 
+    ///returns the depth off the given node.
     fn depth_of(&self, node: usize) -> Result<usize, TreeError> {
         if let Some(parent) = self.get(node)?.parent {
             Ok(self.depth_of(parent)? + 1)
@@ -201,7 +200,7 @@ impl BuildOrderTree {
         }
     }
 
-/// updates all descendants of node to restricted, recursively. 
+    /// updates all descendants of node to restricted, recursively.
     fn restrict_descendants(&mut self, of_node: usize) -> Result<(), TreeError> {
         let node = self.get_mut(of_node)?;
         node.value.state = ComponentState::Restricted;
@@ -343,13 +342,13 @@ mod tests {
     #[test]
     fn add_a_root() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_first_node(BuildComponent::root()).is_ok());
+        assert!(tree.add_node(blank_component(), None).is_ok());
     }
 
     #[test]
     fn add_a_child() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_first_node(BuildComponent::root()).is_ok());
+        assert!(tree.add_node(blank_component(), None).is_ok());
         assert!(tree.add_node(blank_component(), Some(0)).is_ok());
 
         assert_eq!(tree.len(), 2);
@@ -358,7 +357,7 @@ mod tests {
     #[test]
     fn breadth_first_order_ok() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
         assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
@@ -370,7 +369,7 @@ mod tests {
     #[test]
     fn depth_first_order_ok() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
         assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
@@ -384,7 +383,7 @@ mod tests {
     #[test]
     fn display_good() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
         assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
@@ -398,7 +397,7 @@ mod tests {
         );
 
         let mut tree_two = BuildOrderTree::new();
-        assert!(tree_two.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
         assert!(tree_two.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree_two.add_node(blank_component(), None).is_ok()); // 2
 
@@ -410,7 +409,7 @@ mod tests {
     #[test]
     fn update_state() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_first_node(BuildComponent::root()).is_ok()); // 0
+        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
 
         let one = tree.get_mut(1);

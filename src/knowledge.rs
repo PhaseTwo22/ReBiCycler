@@ -40,7 +40,7 @@ impl UnitKnowledge {
 }
 
 impl crate::protoss_bot::ReBiCycler {
-    /// Called by on_step to update our knowledge of the game state
+    /// Called by `on_step` to update our knowledge of the game state
     pub fn observe(&mut self, frame_no: usize) {
         self.state.action_errors.iter().for_each(|error| {
             println!("Action failed: {error:?}");
