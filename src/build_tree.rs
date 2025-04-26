@@ -119,7 +119,7 @@ impl BuildOrderTree {
         };
 
         if let Some(parent_index) = parent {
-            if parent_index >= self.nodes.len() {
+            if parent_index >= self.len() {
                 return Err(TreeError::NodeNotInTree);
             }
             self.nodes[parent_index].add_child(index);
@@ -318,6 +318,23 @@ impl ReBiCycler {
 mod tests {
     use super::*;
 
+    fn root_component() -> BuildComponent {
+        BuildComponent::new(
+            "ROOT",
+            &[ConditionGroup::new(
+                &[BuildCondition::Always],
+                ConditionOperator::All,
+            )],
+            &[ConditionGroup::new(
+                &[BuildCondition::Always],
+                ConditionOperator::All,
+            )],
+            true,
+            None,
+            true,
+        )
+    }
+
     fn blank_component() -> BuildComponent {
         BuildComponent::new(
             "child",
@@ -338,13 +355,13 @@ mod tests {
     #[test]
     fn add_a_root() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok());
+        assert!(tree.add_node(root_component(), None).is_ok());
     }
 
     #[test]
     fn add_a_child() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok());
+        assert!(tree.add_node(root_component(), None).is_ok());
         assert!(tree.add_node(blank_component(), Some(0)).is_ok());
 
         assert_eq!(tree.len(), 2);
@@ -353,7 +370,7 @@ mod tests {
     #[test]
     fn breadth_first_order_ok() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
+        assert!(tree.add_node(root_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
         assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
@@ -365,7 +382,7 @@ mod tests {
     #[test]
     fn depth_first_order_ok() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
+        assert!(tree.add_node(root_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
         assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
@@ -379,7 +396,7 @@ mod tests {
     #[test]
     fn display_good() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
+        assert!(tree.add_node(root_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
         assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
@@ -393,7 +410,7 @@ mod tests {
         );
 
         let mut tree_two = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
+        assert!(tree_two.add_node(root_component(), None).is_ok()); // 0
         assert!(tree_two.add_node(blank_component(), Some(0)).is_ok()); // 1
         assert!(tree_two.add_node(blank_component(), None).is_ok()); // 2
 
@@ -405,7 +422,7 @@ mod tests {
     #[test]
     fn update_state() {
         let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(blank_component(), None).is_ok()); // 0
+        assert!(tree.add_node(root_component(), None).is_ok()); // 0
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
 
         let one = tree.get_mut(1);
