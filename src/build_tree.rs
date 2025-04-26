@@ -110,7 +110,7 @@ impl BuildOrderTree {
         component: BuildComponent,
         parent: Option<usize>,
     ) -> Result<usize, TreeError> {
-        let index = self.nodes.len();
+        let index = self.len();
         let new_node = TreeNode {
             parent,
             children: Vec::new(),
@@ -119,7 +119,7 @@ impl BuildOrderTree {
         };
 
         if let Some(parent_index) = parent {
-            if parent_index >= self.len() {
+            if parent_index >= index {
                 return Err(TreeError::NodeNotInTree);
             }
             self.nodes[parent_index].add_child(index);
@@ -131,11 +131,11 @@ impl BuildOrderTree {
         Ok(index)
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.nodes.len()
     }
 
-    fn get(&self, node: usize) -> Option<&TreeNode> {
+    pub fn get(&self, node: usize) -> Option<&TreeNode> {
         self.nodes.get(node)
     }
 
