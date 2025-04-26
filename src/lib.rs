@@ -2,6 +2,7 @@ use rust_sc2::prelude::*;
 use std::{collections::HashMap, fmt::Debug, hash::Hash};
 
 mod base_manager;
+mod build_order_definitions;
 mod build_order_manager;
 mod build_orders;
 mod build_tree;

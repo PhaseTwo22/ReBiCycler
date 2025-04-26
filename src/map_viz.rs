@@ -5,8 +5,6 @@ use rust_sc2::{geometry::Size, pixel_map::Pixel as MapPixel, prelude::UnitsItera
 use crate::protoss_bot::ReBiCycler;
 
 /// this module serves to store some tools for visiaulizing the game. running headless linux means we don't get graphics, so we'll need to visualize with our own systems
-
-
 impl ReBiCycler {
     /// shows worker locations and what they're holding, and saves as an image
     pub fn map_worker_activity(&mut self, frame_no: usize) {

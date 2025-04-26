@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    fmt::Display,
-};
+use std::{collections::VecDeque, fmt::Display};
 
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction, ComponentState},
@@ -24,6 +21,7 @@ struct TreeNode {
     value: BuildComponent,
 }
 
+#[derive(Clone)]
 pub struct BuildComponent {
     /// Conditions that signal the activation of this node
     start: Vec<ConditionGroup>,
@@ -60,6 +58,9 @@ impl BuildComponent {
             state: ComponentState::NotYetStarted,
             display,
         }
+    }
+    pub const fn action(&self) -> Option<BuildOrderAction> {
+        self.action
     }
 }
 
@@ -134,32 +135,26 @@ impl BuildOrderTree {
         self.nodes.len()
     }
 
-    fn get(&self, node: usize) -> Result<&TreeNode, TreeError> {
-        self.nodes.get(node).ok_or(TreeError::NodeNotInTree)
+    fn get(&self, node: usize) -> Option<&TreeNode> {
+        self.nodes.get(node)
     }
 
-    fn get_mut(&mut self, node: usize) -> Result<&mut TreeNode, TreeError> {
-        self.nodes.get_mut(node).ok_or(TreeError::NodeNotInTree)
+    fn get_mut(&mut self, node: usize) -> Option<&mut TreeNode> {
+        self.nodes.get_mut(node)
     }
-    /// returns a vec out indexes forthy
-    ///e tree in breadth first order
+    /// returns a vec of indexes for the
+    /// tree in breadth first order
     pub fn breadth_first(&self) -> Vec<usize> {
         let mut visits = Vec::new();
         let mut queue = VecDeque::new();
-        let mut unvisited: HashSet<usize> = (0..self.nodes.len()).collect();
+
         queue.extend(self.roots.iter());
 
         while let Some(next) = queue.pop_front() {
-            let node = self.get(next);
-            visits.push(next);
-            unvisited.remove(&next);
+            if let Some(node) = self.get(next) {
+                visits.push(next);
 
-            match node {
-                Ok(treenode) => {
-                    queue.extend(treenode.children.iter());
-                }
-                Err(TreeError::NodeNotInTree) => println!("wtf"),
-                Err(TreeError::TreeNotEmpty) => println!("wtf"),
+                queue.extend(node.children.iter());
             }
         }
 
@@ -173,42 +168,32 @@ impl BuildOrderTree {
         queue.extend(self.roots.iter());
 
         while let Some(next) = queue.pop_front() {
-            let node = self.get(next);
-            visits.push(next);
+            if let Some(node) = self.get(next) {
+                visits.push(next);
 
-            match node {
-                Ok(treenode) => {
-                    let _: () = treenode
-                        .children
-                        .iter()
-                        .map(|c| queue.push_front(*c))
-                        .collect();
-                }
-                Err(TreeError::NodeNotInTree) => println!("wtf"),
-                Err(TreeError::TreeNotEmpty) => println!("wtf"),
+                let _: () = node.children.iter().map(|c| queue.push_front(*c)).collect();
             }
         }
 
         visits
     }
     ///returns the depth off the given node.
-    fn depth_of(&self, node: usize) -> Result<usize, TreeError> {
-        if let Some(parent) = self.get(node)?.parent {
-            Ok(self.depth_of(parent)? + 1)
-        } else {
-            Ok(0)
-        }
+    fn depth_of(&self, index: usize) -> Option<usize> {
+        let node = self.get(index)?;
+        node.parent.map_or(Some(0), |parent| {
+            Some(self.depth_of(parent).unwrap_or(0) + 1)
+        })
     }
 
     /// updates all descendants of node to restricted, recursively.
-    fn restrict_descendants(&mut self, of_node: usize) -> Result<(), TreeError> {
-        let node = self.get_mut(of_node)?;
-        node.value.state = ComponentState::Restricted;
+    fn restrict_descendants(&mut self, of_node: usize) {
+        if let Some(node) = self.get_mut(of_node) {
+            node.value.state = ComponentState::Restricted;
 
-        for child in &node.children.clone() {
-            self.restrict_descendants(*child)?;
+            for child in &node.children.clone() {
+                self.restrict_descendants(*child);
+            }
         }
-        Ok(())
     }
 }
 
@@ -221,19 +206,21 @@ impl Display for BuildOrderTree {
         while let Some(next) = queue.pop_front() {
             let node = self.get(next);
 
-            if let Ok(treenode) = node {
+            if let Some(treenode) = node {
                 let _: () = treenode
                     .children
                     .iter()
                     .map(|c| queue.push_front(*c))
                     .collect();
                 let depth = self.depth_of(treenode.index).unwrap_or(0);
-                out += &format!(
-                    "{}{}{}\n",
-                    "-".repeat(depth),
-                    treenode.value.name,
-                    treenode.value.state
-                );
+                if treenode.value.display {
+                    out += &format!(
+                        "{}{}{}\n",
+                        "-".repeat(depth),
+                        treenode.value.name,
+                        treenode.value.state
+                    );
+                }
             }
         }
         write!(f, "{out}")
@@ -255,10 +242,7 @@ impl ReBiCycler {
             ConditionOperator::Any => iter.any(evaluator),
             ConditionOperator::NoneOf => iter.all(|c| !evaluator(c)),
             ConditionOperator::ExactlyNOf(n) => {
-                iter.map(evaluator)
-                    .map(|b| if b { 1 } else { 0 })
-                    .sum::<usize>()
-                    == n
+                iter.map(evaluator).map(usize::from).sum::<usize>() == n
             }
         }
     }
@@ -284,37 +268,49 @@ impl ReBiCycler {
     //     }
     // }
 
-    fn update_walk(&mut self, index: usize) -> Result<Vec<usize>, TreeError> {
-        let restrict = self.update_component(index)?;
-
-        let mut out = vec![index];
-        if restrict {
-            self.build_order_tree.restrict_descendants(index);
-        } else {
-            for child in &self.build_order_tree.get(index)?.children.clone() {
-                let descendants = self.update_walk(*child)?;
-                out.extend(descendants);
-            }
-        }
-        Ok(out)
-    }
-
-    fn update_component(&mut self, index: usize) -> Result<bool, TreeError> {
-        let node = self.build_order_tree.get(index)?;
+    fn update_component(&mut self, index: usize) -> Option<(&TreeNode, bool)> {
+        let node = self.build_order.get(index)?;
         let (start, end) = self.evaluate_build_component(&node.value);
         let should_activate = start && !end;
         let should_restrict = !end && node.value.restrictive;
 
         if should_restrict {
-            self.build_order_tree.restrict_descendants(index)?;
+            self.build_order.restrict_descendants(index);
         }
 
-        let node = self.build_order_tree.get_mut(index)?;
+        let node = self.build_order.get_mut(index)?;
         if should_activate {
             node.value.state = ComponentState::Active;
+        } else if end {
+            node.value.state = ComponentState::Completed;
         }
 
-        Ok(should_restrict)
+        Some((node, should_restrict))
+    }
+
+    /// Uses a breadth-first walk of the build order tree to
+    /// update the build's state.
+    /// Returns a vec of active build components
+    pub fn update_build(&mut self) -> Vec<BuildComponent> {
+        let mut visits = Vec::new();
+        let mut queue = VecDeque::new();
+        queue.extend(self.build_order.roots.iter());
+
+        while let Some(next) = queue.pop_front() {
+            if let Some((node, pruning)) = self.update_component(next) {
+                if node.value.state == ComponentState::Active {
+                    visits.push(node.value.clone());
+                }
+                if pruning {
+                    continue;
+                }
+                queue.extend(node.children.iter());
+            } else {
+                self.log_error(format!("failed to walk the build order at index {next}"));
+            }
+        }
+
+        visits
     }
 }
 
@@ -413,7 +409,7 @@ mod tests {
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
 
         let one = tree.get_mut(1);
-        assert!(one.is_ok());
+        assert!(one.is_some());
         let one = one.unwrap();
         one.value.state = ComponentState::Restricted;
 
@@ -462,10 +458,5 @@ mod tests {
             one_off,
             ConditionOperator::ExactlyNOf(2)
         )));
-    }
-
-    #[test]
-    fn evaluate_works() {
-        let mut rebi = ReBiCycler::default();
     }
 }

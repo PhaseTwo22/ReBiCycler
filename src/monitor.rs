@@ -173,26 +173,9 @@ impl ReBiCycler {
     }
 
     fn display_build_order(&mut self) {
-        for boc in self.build_order.iter() {
-            let should_start = boc
-                .start_conditions
-                .iter()
-                .all(|c| self.evaluate_condition(c));
-            let should_end = boc
-                .end_conditions
-                .iter()
-                .all(|c| self.evaluate_condition(c));
-            let icon = match (should_start, should_end) {
-                (_, true) => "✅",
-                (false, false) => "➖",
-                (true, false) => "⏳",
-            }
-            .to_string();
-
-            let out = format!("{}{}", boc.name, icon);
-
+        for line in self.build_order.to_string().split('\n') {
             self.display_terminal
-                .write_line_to_pane("Build Order", &out, true);
+                .write_line_to_pane("Build Order", line, true);
         }
     }
 

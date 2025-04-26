@@ -4,53 +4,21 @@ use itertools::Either;
 use rust_sc2::{game_state::PsionicMatrix, prelude::*};
 
 use crate::{
-    build_orders::{BuildCondition, BuildOrderAction, BuildOrderComponent},
+    build_orders::{BuildCondition, BuildOrderAction},
     errors::{BuildError, BuildingTransitionError},
     protoss_bot::ReBiCycler,
 };
 
-#[derive(Default)]
-pub struct BuildOrder(pub Vec<BuildOrderComponent>);
-
-impl BuildOrder {
-    pub const fn empty() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &BuildOrderComponent> {
-        self.0.iter()
-    }
-}
-
 impl ReBiCycler {
     pub fn step_build(&mut self) {
-        self.progress_build();
-    }
-
-    fn progress_build(&mut self) {
-        let started_tasks = self.build_order.iter().filter(|boc| {
-            boc.start_conditions
-                .iter()
-                .all(|c| self.evaluate_condition(c))
-        });
-        let started_and_not_finished = started_tasks.filter(|boc| {
-            !boc.end_conditions
-                .iter()
-                .all(|c| self.evaluate_condition(c))
-        });
-
-        let valid_and_doable: Vec<BuildOrderAction> = started_and_not_finished
-            .filter_map(|boc| {
-                if self.can_do_build_action(boc.action) {
-                    Some(boc.action)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for action in valid_and_doable {
-            self.attempt_build_action(action);
+        let doable_components = self.update_build();
+        for action in doable_components
+            .iter()
+            .filter_map(super::build_tree::BuildComponent::action)
+        {
+            if self.can_do_build_action(action) {
+                self.attempt_build_action(action);
+            }
         }
     }
 
@@ -168,6 +136,7 @@ impl ReBiCycler {
                 self.research(upgrade, ability, researcher)
             }
             BuildOrderAction::Surrender => {
+                self.admit_defeat();
                 println!("Surrendering. GG!");
                 if let Err(e) = self.on_end(GameResult::Defeat) {
                     println!("ending the game didn't go well: {e:?}");
