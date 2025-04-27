@@ -18,8 +18,13 @@ fn straight_to_twilight() -> TreePointer {
     use BuildOrderAction as A;
     use ConditionOperator as Op;
 
-    TreePointer::new()
-        .root(
+    TreePointer::new().root("gas 1&2",
+&[ConditionGroup::new([C::AtLeastCount(UnitTypeId::Gateway, 2)], Op::All)],
+&[ConditionGroup::new([C::AtLeastCount(UnitTypeId::Assimilator,2)], Op::All)],
+true,
+Some(Construct(UnitTypeId::Assimilator)),
+true)
+        .child(
             "cybercore",
             &[ConditionGroup::new(
                 &[
@@ -36,8 +41,6 @@ fn straight_to_twilight() -> TreePointer {
             Some(A::Construct(UnitTypeId::CyberneticsCore)),
             true,
         )
-        .gas_leaf(1)
-        .gas_leaf(2)
         .child(
             "twilight",
             &[ConditionGroup::new(
@@ -88,7 +91,14 @@ fn nexus_first() -> TreePointer {
             true,
             Some(A::Construct(UnitTypeId::Nexus)),
             true,
-        )
+        ).leaf(
+"probe to 38",
+&[ConditionGroup::new(&[C::AtLeastCount(UnitTypeId::Gateway, 1)])],
+&[ConditionGroup::new(&[C::TotalAndOrdered(UnitTypeId::Probe, 38)])],
+false,
+Some(A::Train(UnitTypeId::Probe)),
+true,
+)
         .child(
             "two gateways",
             &[ConditionGroup::new(&[C::Always], Op::All)],
