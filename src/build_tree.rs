@@ -14,11 +14,11 @@ pub struct BuildOrderTree {
 }
 
 /// An element of the build order tree.
-struct TreeNode {
-    parent: Option<usize>,
+pub struct TreeNode {
+    pub parent: Option<usize>,
     children: Vec<usize>,
     index: usize,
-    value: BuildComponent,
+    pub value: BuildComponent,
 }
 
 #[derive(Clone)]
@@ -78,7 +78,7 @@ pub struct ConditionGroup {
     pub operator: ConditionOperator,
 }
 impl ConditionGroup {
-    fn new(conditions: &[BuildCondition], operator: ConditionOperator) -> Self {
+    pub fn new(conditions: &[BuildCondition], operator: ConditionOperator) -> Self {
         Self {
             conditions: conditions.to_vec(),
             operator,

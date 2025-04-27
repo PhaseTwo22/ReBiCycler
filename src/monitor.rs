@@ -52,7 +52,7 @@ impl ReBiCycler {
             "{} | {} [{:.0}:{:0>2.0}] | Frame {}",
             self.game_info.map_name,
             players,
-            self.time / 60.0,
+            (self.time / 60.0).floor(),
             self.time % 60.0,
             frame_no
         );
