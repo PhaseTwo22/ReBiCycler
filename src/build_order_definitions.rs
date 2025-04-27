@@ -5,7 +5,8 @@ use crate::{
     build_tree::{BuildComponent, BuildOrderTree, ConditionGroup, ConditionOperator},
 };
 
-pub fn two_base_charge() -> BuildOrderTree {
+/// nexus first, get warpgate, then tech to twilight, research charge, then 8 gates
+pub fn nexus_first_two_base_charge() -> BuildOrderTree {
     nexus_first()
         .root("graft", &[], &[], false, None, true)
         .subtree(straight_to_twilight())
@@ -52,7 +53,7 @@ fn straight_to_twilight() -> TreePointer {
             true,
         )
 }
-
+/// an opener: probes to 14, pylon, resume probes, nexus, then two gateways. 
 fn nexus_first() -> TreePointer {
     use BuildCondition as C;
     use BuildOrderAction as A;
@@ -116,7 +117,7 @@ impl TreePointer {
             index: 0,
         }
     }
-    /// adds a node to the tree with no parent
+    /// Adds a node to the tree with no parent
     fn root(
         mut self,
         name: &str,
@@ -198,7 +199,7 @@ impl TreePointer {
         }
         self
     }
-
+/// Add a leaf to the graph to build an Assimilator. will build assimilators until `number` is reached. 
     fn gas_leaf(self, number: usize) -> Self {
         use BuildCondition as C;
         use BuildOrderAction as A;
@@ -219,6 +220,10 @@ impl TreePointer {
             true,
         )
     }
+/// Adds a root node that does nothing, with the given name, if any. 
+    fn empty_root(self, name:Option<&str>) -> Self {
+        self.root(name.unwrap_or("empty_root"), &[], &[], false, None, name.is_some())
+}
 }
 
 #[cfg(test)]
