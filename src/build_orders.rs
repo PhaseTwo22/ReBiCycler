@@ -24,6 +24,7 @@ pub enum BuildOrderAction {
     ChronoWhatever(UnitTypeId),
     Research(UpgradeId, AbilityId, UnitTypeId),
     Expand,
+    Chat(ChatAction),
     Surrender,
 }
 
