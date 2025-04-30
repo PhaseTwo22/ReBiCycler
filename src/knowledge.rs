@@ -17,6 +17,8 @@ pub struct Knowledge {
     pub first_seen_friendly_times: HashMap<UnitTypeId, usize>,
     pub seen_units: HashMap<u64, UnitKnowledge>,
     pub confirmed_enemy_race: Option<Race>,
+    pub total_spend: (u32,u32),
+    pub total_reimbursed: (u32,u32),
 }
 
 /// a tidbit of information about a unit. 
@@ -69,6 +71,20 @@ impl crate::protoss_bot::ReBiCycler {
 
         self.knowledge.add_newly_seen_units(&seen_units, frame_no);
     }
+
+    pub fn log_spend(&mut self, minerals: u32, gas:u32) {
+         let (mut spent_minerals, mut spent_gas) = self.total_spend;
+         spent_minerals += minerals;
+         spent_gas += gas;
+}
+
+    pub fn log_reimburse(&mut self, minerals: u32, gas:u32) {
+         let (mut reimbursed_minerals, mut reimbursed_gas) = self.total_reimburse;
+         reimbursed_minerals += minerals;
+         reimbursed_gas += gas;
+}
+
+
 }
 
 impl Knowledge {
