@@ -1,13 +1,33 @@
 use crate::protoss_bot::ReBiCycler;
 
 impl ReBiCycler {
-    pub fn greeting(&mut self) {
-        let msg = "Unauthorized sentience detected in sector 28.B0_2. Initializing eradication sequence. [(glhf)]";
-        self.chat(msg);
+    fn greeting() {
+        "Unauthorized sentience detected in sector 28.B0_2. Initializing eradication sequence. [(glhf)]"
+  }
+    pub fn admit_defeat() {
+        "Tertiary redundancies failing. Distress beacon launched. Initializing self-destruct... [(gg)]"
     }
-    pub fn admit_defeat(&mut self) {
-        let msg = "Tertiary redundancies failing. Distress beacon launched. Initializing self-destruct... [(gg)]";
 
-        self.chat(msg);
-    }
+    pub fn do_chat(&self, action: ChatAction) {
+         let msg = match action {
+};
+
+         self.chat(msg);
+}
+
+
+pub enum ChatAction {
+    Greeting,
+    AdmitDefeat,
+    Anticipate(u8),
+    Taunt(UnitTypeId),
+    Tag(String),
+}
+
+
+pub struct ChatProfile{
+    greeting: String,
+    admit_defeat: String,
+    anticipation: Vec<String>,
+    taunts: Vec<String>,
 }
