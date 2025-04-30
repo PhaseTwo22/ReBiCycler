@@ -3,6 +3,14 @@ use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
 use crate::{protoss_bot::ReBiCycler, Tag};
 
 impl ReBiCycler {
+
+    /// tells a worker to build buildimg at location. 
+    /// marks the resources as spent and adds the construction to the queue
+    fn queue_construction(&mut self, builder: Unit, building:UnitTypeId, location: BuildingLocation) -> Result<(), TransitionError>{
+
+
+}
+
     ///transitions a `BuildingLocation` that finished construction to the completed status
     /// also adds new nexuses and assimilators to the mining manager
     pub fn complete_construction(&mut self, building_tag: u64) {
