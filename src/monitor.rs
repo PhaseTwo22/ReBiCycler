@@ -60,10 +60,16 @@ impl ReBiCycler {
             "M: {} G: {} S:{}/{}",
             self.minerals, self.vespene, self.supply_used, self.supply_cap
         );
+        let spent = self.knowledge.total_spend;
+        let reimbursed = self.knowledge.total_reimburse;
+        let current = (self.minerals, self.vespene);
+
+        let total_mined = format!("Total mined: M: {} G:{}", spent.0 + current.0 - reimbursed.0, spent.1 + current.1 - reimbursed.1);
         self.display_terminal.write_line_to_header(&map);
         self.display_terminal.write_line_to_header(&header);
         self.display_terminal
             .write_line_to_header(&format!("{:?}", self.siting_director));
+        self.display_terminal.write_line_to_header(&total_mined);
     }
 
     fn production_tab(&mut self) {
