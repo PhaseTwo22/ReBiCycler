@@ -8,11 +8,12 @@ impl Rebicycler {
 {
 
 }
-}
-    fn command_unit(&self, UnitState) {
+
+    fn command_unit(&self, UnitState) 
+{
 
 }
-
+}
 
 struct ArmyController {
       assignments: HashMap<u64, ArmyAssignment>,
@@ -21,7 +22,7 @@ struct ArmyController {
 
 
 struct ArmyAssignment {
-    unit: u64,
+    unit: UnitState,
     assignment: Tactic,
 }
 
@@ -35,6 +36,6 @@ struct UnitState {
      tag:u64,
      type_id: UnitTypeId,
      vitals : Vitals,
-     weapon_cooldoen : f32,
+     weapon_cooldown : Option<(f32,f32)>,
      energy: Option<f32>,
 }
