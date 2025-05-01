@@ -237,3 +237,21 @@ pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering
     let d2p2 = anchor.distance(p2);
     d2p1.total_cmp(&d2p2)
 }
+
+pub fn is_mostly_static_defense(unit: UnitTypeId) -> bool {
+     matches!(unit, 
+     UnitTypeId::SiegeTankSieged,
+     UnitTypeId::WidowMineBurrowed,
+     UnitTypeId::MissileTurret,
+     UnitTypeId::Bunker,
+     UnitTypeId::PlanetaryFortress,
+     UnitTypeId::LiberatorSieged,
+     UnitTypeId::SporeCrawler,
+     UnitTypeId::SpineCrawler,
+     UnitTypeId::LurkerBurrowed,
+     UnitTypeId::BanelingBurrowed,
+     UnitTypeId::PhotonCannon,
+     UnitTypeId::StasisWard,
+     UnitTypeId::ShieldBattery,
+)
+}
