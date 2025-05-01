@@ -1,8 +1,15 @@
 impl Rebicycler {
 
-    pub fn control_army(&self, army: Units) {
+    pub fn plan_army(&mut self, army: Units) {
          
 }
+
+    pub fn command_army(&self)
+{
+
+}
+}
+    fn command_unit(&self, UnitState) {
 
 }
 
@@ -22,4 +29,12 @@ enum Tactic {
      AttackMove(Point2),
      StutterMove(Point2),
      DirectMove(Point2),
+}
+
+struct UnitState {
+     tag:u64,
+     type_id: UnitTypeId,
+     vitals : Vitals,
+     weapon_cooldoen : f32,
+     energy: Option<f32>,
 }
