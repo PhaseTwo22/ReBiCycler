@@ -28,6 +28,7 @@ pub struct UnitKnowledge {
     pub last_seen: usize,
     pub last_position: Point2,
     pub alliance: Alliance,
+    pub is_structure: bool,
 }
 impl UnitKnowledge {
     /// generate relevant information from a unit for storage. 
@@ -37,6 +38,7 @@ impl UnitKnowledge {
             last_seen: frame_no,
             last_position: unit.position(),
             alliance: unit.alliance(),
+            is_structure: unit.is_structure()
         }
     }
 }
@@ -130,6 +132,10 @@ impl Knowledge {
         self.confirmed_dead.insert(unit_tag, unit.clone());
         Ok(unit)
     }
+    /// fetch all the locations where we've seen enemy buildings
+    pub fn get_enemy_buildings(&self) -> Vec<&UnitKnowledge> {
+         self.seen_units.values().filter(|uk| uk.is_structure && matches!(uk.alliance, Alliance::Enemy).collect()
+}
 }
 
 #[derive(Debug)]
