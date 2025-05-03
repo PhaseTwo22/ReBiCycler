@@ -52,36 +52,5 @@ impl Display for ComponentState {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct BuildOrderComponent {
-    pub name: String,
-    pub start_conditions: Vec<BuildCondition>,
-    pub end_conditions: Vec<BuildCondition>,
-    pub action: BuildOrderAction,
-    pub state: ComponentState,
-}
-
-impl Display for BuildOrderComponent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.name, self.state)
-    }
-}
-impl BuildOrderComponent {
-    pub fn new(
-        name: &str,
-        start_conditions: &[BuildCondition],
-        end_conditions: &[BuildCondition],
-        action: BuildOrderAction,
-    ) -> Self {
-        Self {
-            name: name.to_string(),
-            start_conditions: start_conditions.into(),
-            end_conditions: end_conditions.into(),
-            action,
-            state: ComponentState::NotYetStarted,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {}
