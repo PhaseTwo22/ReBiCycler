@@ -58,19 +58,15 @@ pub enum MicroError {
 
 pub struct AssignmentError {
     assignee: Tag,
-    manager: Box<dyn Assigns>,
+    manager: String,
     reason: AssignmentIssue,
 }
 
 impl AssignmentError {
-    pub fn new(
-        assignee: Tag,
-        manager: Box<impl Assigns + 'static>,
-        reason: AssignmentIssue,
-    ) -> Self {
+    pub fn new(assignee: Tag, manager: String, reason: AssignmentIssue) -> Self {
         Self {
             assignee,
-            manager,
+            manager: manager.to_string(),
             reason,
         }
     }
@@ -91,4 +87,5 @@ pub enum AssignmentIssue {
     InvalidUnit,
     UnitAlreadyAssigned,
     UnitNotAssigned,
+    DifferentUnitAssignedInRole,
 }

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
 
 use crate::{
-    errors::{AssignmentError, BuildingTransitionError},
+    errors::{AssignmentError, AssignmentIssue, BuildingTransitionError},
     protoss_bot::ReBiCycler,
     siting::ConstructionSite,
     Assigns, Tag,
@@ -38,56 +38,49 @@ impl ConstructionProject {
 }
 impl Display for ConstructionProject {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Construction[{} @ {}]", self.building, self.location)
+        write!(f, "Construction[{:?} @ {}]", self.building, self.location)
     }
 }
 
 impl Assigns for ConstructionProject {
     fn assign(&mut self, unit: Tag) -> Result<(), crate::errors::AssignmentError> {
-        match unit.unit_type {
+        let issue = match unit.unit_type {
             UnitTypeId::Probe => {
                 if self.builder.is_none() {
                     self.builder = Some(unit.tag);
                     Ok(())
                 } else {
-                    Err(AssignmentError {
-                        assignee: unit.to_string(),
-                        manager: self.to_string(),
-                    })
+                    Err(AssignmentIssue::DifferentUnitAssignedInRole)
                 }
             }
             UnitTypeId::Observer => {
                 if self.detector.is_none() {
-                    self.detector = Some(unit.tag)
+                    self.detector = Some(unit.tag);
+                    Ok(())
                 } else {
-                    Err(AssignmentError {
-                        assignee: unit.to_string(),
-                        manager: self.to_string(),
-                    })
+                    Err(AssignmentIssue::DifferentUnitAssignedInRole)
                 }
             }
             _ => {
                 self.clearing_crew.push(unit.tag);
                 Ok(())
             }
-        }
+        };
+        issue.map_err(|i| AssignmentError::new(unit, self.to_string(), i))
     }
 
     fn remove(&mut self, unit: Tag) -> Result<(), AssignmentError> {
-        match unit.unit_type {
+        let issue = match unit.unit_type {
             UnitTypeId::Probe => {
                 if let Some(builder) = self.builder {
                     if builder == unit.tag {
                         self.builder = None;
                         Ok(())
                     } else {
-                        Err(AssignmentError {})
+                        Err(AssignmentIssue::DifferentUnitAssignedInRole)
                     }
                 } else {
-                    Err(AssignmentError {
-                        assignee: unit.to_string(),
-                        manager: self.to_string(),
-                    })
+                    Err(AssignmentIssue::UnitNotAssigned)
                 }
             }
             UnitTypeId::Observer => {
@@ -96,13 +89,10 @@ impl Assigns for ConstructionProject {
                         self.detector = None;
                         Ok(())
                     } else {
-                        Err(AssignmentError {})
+                        Err(AssignmentIssue::DifferentUnitAssignedInRole)
                     }
                 } else {
-                    Err(AssignmentError {
-                        assignee: unit.to_string(),
-                        manager: self.to_string(),
-                    })
+                    Err(AssignmentIssue::UnitNotAssigned)
                 }
             }
 
@@ -111,13 +101,11 @@ impl Assigns for ConstructionProject {
                     self.clearing_crew.retain(|tag| *tag != unit.tag);
                     Ok(())
                 } else {
-                    Err(AssignmentError {
-                        assignee: unit.to_string(),
-                        manager: self.to_string(),
-                    })
+                    Err(AssignmentIssue::UnitNotAssigned)
                 }
             }
-        }
+        };
+        issue.map_err(|i| AssignmentError::new(unit, self.to_string(), i))
     }
 }
 

@@ -63,6 +63,11 @@ pub struct Tag {
     pub tag: u64,
     pub unit_type: UnitTypeId,
 }
+impl Display for Tag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}#{}", self.unit_type, self.tag % 100)
+    }
+}
 impl Tag {
     #[must_use]
     pub fn from_unit(unit: &Unit) -> Self {

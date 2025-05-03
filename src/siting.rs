@@ -1,7 +1,8 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    fmt::{self, Debug},
+    fmt::{self, write, Debug, Display},
+    os::linux::raw::stat,
 };
 
 use crate::{
@@ -81,6 +82,22 @@ impl BuildingStatus {
 pub struct ConstructionSite {
     pub status: BuildingStatus,
     pub location: LocationType,
+}
+impl Display for ConstructionSite {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let status_part = match self.status {
+            BuildingStatus::Free(_, _) => "Free",
+            BuildingStatus::Built(tag, _) | BuildingStatus::Constructing(tag, _) => {
+                &format!("{:?}", tag.unit_type)
+            }
+            BuildingStatus::Blocked(_, _) => "Blocked",
+        };
+        let location_part = match self.location {
+            LocationType::AtPoint(p, s) => format!("{}({:.1},{:.1})", s.to_string(), p.x, p.y),
+            LocationType::OnGeyser(_g, p) => format!("OnGeyser({},{})", p.x, p.y),
+        };
+        write!(f, "{}{}", status_part, location_part)
+    }
 }
 
 impl ConstructionSite {
@@ -293,6 +310,20 @@ pub enum SlotSize {
     Standard,
     Townhall,
 }
+impl Display for SlotSize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Tumor => "1x1",
+                Self::Small => "2x2",
+                Self::Standard => "3x3",
+                Self::Townhall => "5x5",
+            }
+        )
+    }
+}
 
 impl SlotSize {
     pub fn from(structure_type: UnitTypeId) -> Result<Self, BuildError> {
@@ -415,8 +446,8 @@ impl SitingDirector {
         self.sites.extend(gasses);
     }
 
-    pub fn iter(&self) -> std::collections::hash_map::Values<'_, Point2, ConstructionSite> {
-        self.sites.values()
+    pub fn iter(&self) -> std::collections::hash_map::Iter<'_, Point2, ConstructionSite> {
+        self.sites.iter()
     }
 
     pub fn add_initial_nexus(&mut self, nexus: &Unit) -> Result<(), BuildError> {
