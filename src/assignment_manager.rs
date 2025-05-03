@@ -5,6 +5,11 @@ use std::{
 
 use rust_sc2::prelude::*;
 
+/// I'm tired of implementing this in several places.
+/// I want a generic thing that I can use to manage my assignments and units.
+/// It needs to:
+/// - add and remove assignments and roles
+
 struct AssignmentManager<A, R> {
     assignments: HashMap<A, R>,
 }
