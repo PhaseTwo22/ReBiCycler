@@ -4,7 +4,7 @@ use rust_sc2::{
     game_state::Alert,
     ids::UnitTypeId,
     player::Race,
-    prelude::{Alliance, Point2},
+    prelude::{Alliance, Point2, UnitsIterator},
     unit::Unit,
     units::Units,
 };
@@ -19,6 +19,8 @@ pub struct Knowledge {
     pub confirmed_enemy_race: Option<Race>,
     pub total_spend: (u32, u32),
     pub total_reimbursed: (u32, u32),
+    pub expansions_need_detectors: bool,
+    pub expansions_need_clearing: bool,
 }
 
 /// a tidbit of information about a unit.
@@ -57,7 +59,14 @@ impl crate::protoss_bot::ReBiCycler {
             .iter()
             .any(|a| matches!(&a, Alert::TransformationComplete))
         {
-            let warpgates = self.units.my.structures.of_type(UnitTypeId::WarpGate);
+            let warpgates = self
+                .units
+                .my
+                .structures
+                .iter()
+                .of_type(UnitTypeId::WarpGate)
+                .map(|u| u.tag())
+                .collect();
             self.siting_director.check_morph_gateways(warpgates);
         }
 
@@ -72,18 +81,6 @@ impl crate::protoss_bot::ReBiCycler {
         self.knowledge.update_seen_units(&seen_units, frame_no);
 
         self.knowledge.add_newly_seen_units(&seen_units, frame_no);
-    }
-
-    pub fn log_spend(&mut self, minerals: u32, gas: u32) {
-        let (mut spent_minerals, mut spent_gas) = self.knowledge.total_spend;
-        spent_minerals += minerals;
-        spent_gas += gas;
-    }
-
-    pub fn log_reimburse(&mut self, minerals: u32, gas: u32) {
-        let (mut reimbursed_minerals, mut reimbursed_gas) = self.knowledge.total_reimbursed;
-        reimbursed_minerals += minerals;
-        reimbursed_gas += gas;
     }
 }
 

@@ -6,7 +6,8 @@ use rust_sc2::{
 };
 
 use crate::{
-    siting::{BuildingStatus, BuildingTransition}, Tag,
+    siting::{BuildingStatus, BuildingTransition},
+    Tag,
 };
 
 pub struct UnitEmploymentError(pub String);
@@ -87,4 +88,6 @@ pub enum AssignmentIssue {
     UnitAlreadyAssigned,
     UnitNotAssigned,
     DifferentUnitAssignedInRole,
+    InvalidProject,
+    NoUnits,
 }

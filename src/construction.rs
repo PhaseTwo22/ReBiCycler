@@ -1,24 +1,85 @@
-use std::fmt::Display;
+use std::{cmp::Ordering, collections::HashMap, fmt::Display};
 
-use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
+use rust_sc2::{
+    action::Target,
+    ids::UnitTypeId,
+    prelude::{DistanceIterator, Point2},
+    unit::Unit,
+};
 
 use crate::{
-    errors::{AssignmentError, AssignmentIssue},
+    army::MissionType,
+    errors::{AssignmentError, AssignmentIssue, BuildError},
     protoss_bot::ReBiCycler,
-    siting::ConstructionSite,
+    siting::{ConstructionSite, LocationType},
     Assigns, Tag,
 };
+
+const PROJECT_MAX_LIFETIME: u32 = 23 * 120;
+
 #[derive(Default)]
 pub struct ConstructionManager {
-    active_projects: Vec<ConstructionProject>,
+    pub active_projects: HashMap<Point2, ConstructionProject>,
 }
 
 impl ConstructionManager {
-    fn new_project(&mut self, building: UnitTypeId, site: ConstructionSite, builder: Option<Tag>) {
-        let mut project = ConstructionProject::new(building, site);
-        builder.map(|b| project.assign(b));
+    fn new_project(&mut self, building: UnitTypeId, site: ConstructionSite, current_step: u32) {
+        let loc = site.location();
+        let project = ConstructionProject::new(building, site, current_step);
 
-        self.active_projects.push(project);
+        self.active_projects.insert(loc, project);
+    }
+
+    pub fn remove_project(&mut self, site: ConstructionSite) {
+        self.active_projects.remove(&site.location());
+    }
+
+    fn add_babysitters(
+        &mut self,
+        location: Point2,
+        babysitter_mission: usize,
+    ) -> Result<(), AssignmentIssue> {
+        self.active_projects
+            .get_mut(&location)
+            .ok_or(AssignmentIssue::InvalidProject)?
+            .clearing_crew = Some(babysitter_mission);
+        Ok(())
+    }
+
+    fn add_detector_mission(
+        &mut self,
+        location: Point2,
+        detector_mission: usize,
+    ) -> Result<(), AssignmentIssue> {
+        self.active_projects
+            .get_mut(&location)
+            .ok_or(AssignmentIssue::InvalidProject)?
+            .detector = Some(detector_mission);
+        Ok(())
+    }
+
+    fn get(&self, location: Point2) -> Option<&ConstructionProject> {
+        self.active_projects.get(&location)
+    }
+
+    fn log_construction_queued(
+        &mut self,
+        location: Point2,
+        queued_state: bool,
+    ) -> Result<(), AssignmentIssue> {
+        self.active_projects
+            .get_mut(&location)
+            .ok_or(AssignmentIssue::InvalidProject)?
+            .builder_ordered = queued_state;
+        Ok(())
+    }
+
+    fn add_builder(&mut self, location: Point2, builder: u64) -> Result<(), AssignmentIssue> {
+        self.active_projects
+            .get_mut(&location)
+            .ok_or(AssignmentIssue::InvalidProject)?
+            .builder = Some(builder);
+        Ok(())
     }
 }
 
@@ -26,22 +87,26 @@ pub struct ConstructionProject {
     building: UnitTypeId,
     site: ConstructionSite,
     builder: Option<u64>,
+    builder_ordered: bool,
     needs_detector: bool,
-    detector: Option<u64>,
+    detector: Option<usize>,
     needs_clearing: bool,
-    clearing_crew: Vec<u64>,
+    clearing_crew: Option<usize>,
+    created_step: u32,
 }
 
 impl ConstructionProject {
-    pub const fn new(building: UnitTypeId, site: ConstructionSite) -> Self {
+    pub const fn new(building: UnitTypeId, site: ConstructionSite, current_step: u32) -> Self {
         Self {
             building,
             site,
             builder: None,
+            builder_ordered: false,
             needs_detector: false,
             detector: None,
             needs_clearing: false,
-            clearing_crew: Vec::new(),
+            clearing_crew: None,
+            created_step: current_step,
         }
     }
 }
@@ -62,18 +127,7 @@ impl Assigns for ConstructionProject {
                     Err(AssignmentIssue::DifferentUnitAssignedInRole)
                 }
             }
-            UnitTypeId::Observer => {
-                if self.detector.is_none() {
-                    self.detector = Some(unit.tag);
-                    Ok(())
-                } else {
-                    Err(AssignmentIssue::DifferentUnitAssignedInRole)
-                }
-            }
-            _ => {
-                self.clearing_crew.push(unit.tag);
-                Ok(())
-            }
+            _ => Err(AssignmentIssue::InvalidUnit),
         };
         issue.map_err(|i| AssignmentError::new(unit, self.to_string(), i))
     }
@@ -92,38 +146,17 @@ impl Assigns for ConstructionProject {
                     Err(AssignmentIssue::UnitNotAssigned)
                 }
             }
-            UnitTypeId::Observer => {
-                if let Some(detector) = self.detector {
-                    if detector == unit.tag {
-                        self.detector = None;
-                        Ok(())
-                    } else {
-                        Err(AssignmentIssue::DifferentUnitAssignedInRole)
-                    }
-                } else {
-                    Err(AssignmentIssue::UnitNotAssigned)
-                }
-            }
-
-            _ => {
-                if self.clearing_crew.contains(&unit.tag) {
-                    self.clearing_crew.retain(|tag| *tag != unit.tag);
-                    Ok(())
-                } else {
-                    Err(AssignmentIssue::UnitNotAssigned)
-                }
-            }
+            _ => Err(AssignmentIssue::InvalidUnit),
         };
         issue.map_err(|i| AssignmentError::new(unit, self.to_string(), i))
     }
 }
 
 impl ReBiCycler {
-    /// tells a worker to build buildimg at location.
-    /// marks the resources as spent and adds the construction to the queue
-    fn queue_construction(&mut self, builder: Tag, building: UnitTypeId, site: ConstructionSite) {
+    /// Creates a construction project for the construction manager to deal with.
+    fn queue_construction(&mut self, building: UnitTypeId, site: ConstructionSite) {
         self.construction_manager
-            .new_project(building, site, Some(builder));
+            .new_project(building, site, self.game_step());
     }
 
     ///transitions a `BuildingLocation` that finished construction to the completed status
@@ -202,9 +235,9 @@ impl ReBiCycler {
             .collect();
     }
 
-    pub fn maintain_supply(&mut self) {
+    pub fn maintain_supply(&mut self) -> Result<(), BuildError> {
         if self.supply_cap == 200 {
-            return;
+            return Ok(());
         }
         let production_structures = self
             .units
@@ -214,12 +247,14 @@ impl ReBiCycler {
             .filter(|u| crate::is_protoss_production(&u.type_id()))
             .count();
 
+        let over_supply = self.supply_used.saturating_sub(self.supply_cap);
+
         let producing_workers = self.counter().ordered().count(UnitTypeId::Probe) > 0;
 
         let wanted_free_supply = production_structures * 2 + if producing_workers { 2 } else { 0 };
 
         if self.supply_left >= wanted_free_supply as u32 {
-            return;
+            return Ok(());
         }
 
         let ordered_pylons = self.counter().ordered().count(UnitTypeId::Pylon);
@@ -231,7 +266,131 @@ impl ReBiCycler {
             .filter(|u| !u.is_ready() && u.is_almost_ready())
             .count();
 
-        let over_supply = self.supply_used > self.supply_cap;
-        todo!()
+        let pending_new_supply = 8 * ordered_pylons + 15 * almost_done_nexi;
+
+        if pending_new_supply >= (wanted_free_supply + over_supply as usize) {
+            return Ok(());
+        }
+
+        self.build(UnitTypeId::Pylon)
     }
+
+    pub fn process_construction_projects(&mut self) {
+        let needs = self.check_construction_projects();
+
+        for (project_index, (location, need)) in needs.iter().enumerate() {
+            let problem = match need {
+                ProjectNeeds::Cancelling | ProjectNeeds::Nothing => Ok(()),
+                ProjectNeeds::Cleaners => {
+                    let mission_id = self.new_mission(MissionType::BabysitConstruction(*location));
+                    self.construction_manager
+                        .add_babysitters(*location, mission_id)
+                }
+                ProjectNeeds::Detector => {
+                    let mission_id = self.new_mission(MissionType::DetectArea(*location));
+                    self.construction_manager
+                        .add_detector_mission(*location, mission_id)
+                }
+                ProjectNeeds::BuilderRallied => {
+                    let find_builder = self.rally_builder(*location);
+                    match find_builder {
+                        Ok(builder) => self.construction_manager.add_builder(*location, builder),
+                        Err(issue) => Err(issue),
+                    }
+                }
+                ProjectNeeds::BuilderOrdered(builder) => {
+                    let tried_command = self.command_builder(*location, *builder);
+                    match tried_command {
+                        Ok(queued_up) => self
+                            .construction_manager
+                            .log_construction_queued(*location, queued_up),
+                        Err(issue) => Err(issue),
+                    }
+                }
+            };
+        }
+    }
+
+    pub fn check_construction_projects(&self) -> Vec<(Point2, ProjectNeeds)> {
+        self.construction_manager
+            .active_projects
+            .iter()
+            .map(|(location, project)| (*location, self.evaluate_construction_project(project)))
+            .collect()
+    }
+
+    fn evaluate_construction_project(&self, project: &ConstructionProject) -> ProjectNeeds {
+        if project.clearing_crew.is_none() && self.knowledge.expansions_need_clearing {
+            return ProjectNeeds::Cleaners;
+        }
+        if project.detector.is_none() && self.knowledge.expansions_need_detectors {
+            return ProjectNeeds::Detector;
+        }
+        if let Some(builder) = project.builder {
+            if !project.builder_ordered {
+                return ProjectNeeds::BuilderOrdered(builder);
+            }
+        } else {
+            return ProjectNeeds::BuilderRallied;
+        }
+
+        if project.created_step + PROJECT_MAX_LIFETIME < self.game_step() {
+            return ProjectNeeds::Cancelling;
+        }
+
+        return ProjectNeeds::Nothing;
+    }
+
+    fn rally_builder(&self, location: Point2) -> Result<u64, AssignmentIssue> {
+        let distance_from_project =
+            |unit: &&Unit| crate::distance_squared(&unit.position(), &location);
+
+        let closest_miner = self
+            .mining_manager
+            .employed_miners()
+            .flat_map(|tag| self.units.my.workers.get(*tag))
+            .min_by(|worker_a, worker_b| {
+                distance_from_project(worker_a).total_cmp(&distance_from_project(worker_b))
+            });
+
+        let builder = closest_miner.ok_or(AssignmentIssue::NoUnits)?;
+
+        builder.move_to(Target::Pos(location), false);
+        Ok(builder.tag())
+    }
+
+    fn command_builder(&self, location: Point2, builder: u64) -> Result<bool, AssignmentIssue> {
+        let project = self
+            .construction_manager
+            .get(location)
+            .ok_or(AssignmentIssue::InvalidProject)?;
+
+        let builder = self
+            .units
+            .my
+            .workers
+            .get(builder)
+            .ok_or(AssignmentIssue::InvalidUnit)?;
+
+        if self.can_afford(project.building, false) {
+            match project.site.location {
+                LocationType::AtPoint(point, _size) => {
+                    builder.build(project.building, point, false)
+                }
+                LocationType::OnGeyser(geyser, _point) => builder.build_gas(geyser, false),
+            };
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+}
+
+pub enum ProjectNeeds {
+    BuilderRallied,
+    BuilderOrdered(u64),
+    Detector,
+    Cleaners,
+    Nothing,
+    Cancelling,
 }
