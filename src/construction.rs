@@ -3,19 +3,28 @@ use std::fmt::Display;
 use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
 
 use crate::{
-    errors::{AssignmentError, AssignmentIssue, BuildingTransitionError},
+    errors::{AssignmentError, AssignmentIssue},
     protoss_bot::ReBiCycler,
     siting::ConstructionSite,
     Assigns, Tag,
 };
-
+#[derive(Default)]
 pub struct ConstructionManager {
     active_projects: Vec<ConstructionProject>,
 }
 
+impl ConstructionManager {
+    fn new_project(&mut self, building: UnitTypeId, site: ConstructionSite, builder: Option<Tag>) {
+        let mut project = ConstructionProject::new(building, site);
+        builder.map(|b| project.assign(b));
+
+        self.active_projects.push(project);
+    }
+}
+
 pub struct ConstructionProject {
     building: UnitTypeId,
-    location: ConstructionSite,
+    site: ConstructionSite,
     builder: Option<u64>,
     needs_detector: bool,
     detector: Option<u64>,
@@ -24,10 +33,10 @@ pub struct ConstructionProject {
 }
 
 impl ConstructionProject {
-    pub fn new(building: UnitTypeId, location: ConstructionSite) -> Self {
+    pub fn new(building: UnitTypeId, site: ConstructionSite) -> Self {
         Self {
             building,
-            location,
+            site,
             builder: None,
             needs_detector: false,
             detector: None,
@@ -38,7 +47,7 @@ impl ConstructionProject {
 }
 impl Display for ConstructionProject {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Construction[{:?} @ {}]", self.building, self.location)
+        write!(f, "Construction[{:?} @ {}]", self.building, self.site)
     }
 }
 
@@ -112,12 +121,9 @@ impl Assigns for ConstructionProject {
 impl ReBiCycler {
     /// tells a worker to build buildimg at location.
     /// marks the resources as spent and adds the construction to the queue
-    fn queue_construction(
-        &mut self,
-        builder: Unit,
-        building: UnitTypeId,
-        location: ConstructionSite,
-    ) -> Result<(), BuildingTransitionError> {
+    fn queue_construction(&mut self, builder: Tag, building: UnitTypeId, site: ConstructionSite) {
+        self.construction_manager
+            .new_project(building, site, Some(builder));
     }
 
     ///transitions a `BuildingLocation` that finished construction to the completed status

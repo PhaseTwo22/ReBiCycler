@@ -1,6 +1,7 @@
 use crate::build_order_definitions::nexus_first_two_base_charge;
 use crate::build_tree::BuildOrderTree;
 use crate::chatter::ChatAction;
+use crate::construction::ConstructionManager;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
@@ -23,6 +24,8 @@ pub struct ReBiCycler {
     pub knowledge: Knowledge,
     /// manages workers and executes speed mining
     pub mining_manager: MinerManager,
+    /// Manages construction projects
+    pub construction_manager: ConstructionManager,
     /// a text terminal for what's going on inside the bot.
     /// gets saved after every game.
     pub display_terminal: DisplayTerminal,
