@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display};
 
 use rust_sc2::{
     action::Target,
@@ -16,6 +16,7 @@ use crate::{
 };
 
 const PROJECT_MAX_LIFETIME: u32 = 23 * 120;
+const CONSTRUCTION_RALLY_DISTANCE: f32 = 7.0;
 
 #[derive(Default)]
 pub struct ConstructionManager {
@@ -278,16 +279,20 @@ impl ReBiCycler {
     pub fn process_construction_projects(&mut self) {
         let needs = self.check_construction_projects();
 
-        for (project_index, (location, need)) in needs.iter().enumerate() {
+        for (location, need) in needs.iter() {
             let problem = match need {
                 ProjectNeeds::Cancelling | ProjectNeeds::Nothing => Ok(()),
                 ProjectNeeds::Cleaners => {
-                    let mission_id = self.new_mission(MissionType::BabysitConstruction(*location));
+                    let mission_id = self.new_mission(
+                        MissionType::BabysitConstruction(*location),
+                        location.towards(self.game_info.map_center, CONSTRUCTION_RALLY_DISTANCE),
+                    );
                     self.construction_manager
                         .add_babysitters(*location, mission_id)
                 }
                 ProjectNeeds::Detector => {
-                    let mission_id = self.new_mission(MissionType::DetectArea(*location));
+                    let mission_id =
+                        self.new_mission(MissionType::DetectArea(*location), *location);
                     self.construction_manager
                         .add_detector_mission(*location, mission_id)
                 }
@@ -308,6 +313,12 @@ impl ReBiCycler {
                     }
                 }
             };
+            problem.map_err(|issue| {
+                self.log_error(format!(
+                    "Can't address {:?} at construction at {:?}: {:?}",
+                    need, location, issue
+                ))
+            });
         }
     }
 
@@ -386,6 +397,7 @@ impl ReBiCycler {
     }
 }
 
+#[derive(Debug)]
 pub enum ProjectNeeds {
     BuilderRallied,
     BuilderOrdered(u64),
