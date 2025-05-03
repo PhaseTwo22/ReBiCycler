@@ -61,10 +61,14 @@ impl ReBiCycler {
             self.minerals, self.vespene, self.supply_used, self.supply_cap
         );
         let spent = self.knowledge.total_spend;
-        let reimbursed = self.knowledge.total_reimburse;
+        let reimbursed = self.knowledge.total_reimbursed;
         let current = (self.minerals, self.vespene);
 
-        let total_mined = format!("Total mined: M: {} G:{}", spent.0 + current.0 - reimbursed.0, spent.1 + current.1 - reimbursed.1);
+        let total_mined = format!(
+            "Total mined: M: {} G:{}",
+            spent.0 + current.0 - reimbursed.0,
+            spent.1 + current.1 - reimbursed.1
+        );
         self.display_terminal.write_line_to_header(&map);
         self.display_terminal.write_line_to_header(&header);
         self.display_terminal
@@ -155,7 +159,7 @@ impl ReBiCycler {
             .my
             .structures
             .iter()
-            .filter(|u| crate::is_protoss_production(u.type_id()))
+            .filter(|u| crate::is_protoss_production(&u.type_id()))
         {
             let (key, progress) = if let Some((ability, _target, progress)) = unit.order() {
                 ((unit.type_id(), Some(ability)), progress)

@@ -9,7 +9,7 @@ use rust_sc2::{
     units::Units,
 };
 
-/// Stores things we know about the game. 
+/// Stores things we know about the game.
 #[derive(Default)]
 pub struct Knowledge {
     pub confirmed_dead: HashMap<u64, UnitKnowledge>,
@@ -17,11 +17,11 @@ pub struct Knowledge {
     pub first_seen_friendly_times: HashMap<UnitTypeId, usize>,
     pub seen_units: HashMap<u64, UnitKnowledge>,
     pub confirmed_enemy_race: Option<Race>,
-    pub total_spend: (u32,u32),
-    pub total_reimbursed: (u32,u32),
+    pub total_spend: (u32, u32),
+    pub total_reimbursed: (u32, u32),
 }
 
-/// a tidbit of information about a unit. 
+/// a tidbit of information about a unit.
 #[derive(Clone)]
 pub struct UnitKnowledge {
     pub type_id: UnitTypeId,
@@ -31,14 +31,14 @@ pub struct UnitKnowledge {
     pub is_structure: bool,
 }
 impl UnitKnowledge {
-    /// generate relevant information from a unit for storage. 
+    /// generate relevant information from a unit for storage.
     fn from_unit(unit: &Unit, frame_no: usize) -> Self {
         Self {
             type_id: unit.type_id(),
             last_seen: frame_no,
             last_position: unit.position(),
             alliance: unit.alliance(),
-            is_structure: unit.is_structure()
+            is_structure: unit.is_structure(),
         }
     }
 }
@@ -74,19 +74,17 @@ impl crate::protoss_bot::ReBiCycler {
         self.knowledge.add_newly_seen_units(&seen_units, frame_no);
     }
 
-    pub fn log_spend(&mut self, minerals: u32, gas:u32) {
-         let (mut spent_minerals, mut spent_gas) = self.total_spend;
-         spent_minerals += minerals;
-         spent_gas += gas;
-}
+    pub fn log_spend(&mut self, minerals: u32, gas: u32) {
+        let (mut spent_minerals, mut spent_gas) = self.knowledge.total_spend;
+        spent_minerals += minerals;
+        spent_gas += gas;
+    }
 
-    pub fn log_reimburse(&mut self, minerals: u32, gas:u32) {
-         let (mut reimbursed_minerals, mut reimbursed_gas) = self.total_reimburse;
-         reimbursed_minerals += minerals;
-         reimbursed_gas += gas;
-}
-
-
+    pub fn log_reimburse(&mut self, minerals: u32, gas: u32) {
+        let (mut reimbursed_minerals, mut reimbursed_gas) = self.knowledge.total_reimbursed;
+        reimbursed_minerals += minerals;
+        reimbursed_gas += gas;
+    }
 }
 
 impl Knowledge {
@@ -134,8 +132,11 @@ impl Knowledge {
     }
     /// fetch all the locations where we've seen enemy buildings
     pub fn get_enemy_buildings(&self) -> Vec<&UnitKnowledge> {
-         self.seen_units.values().filter(|uk| uk.is_structure && matches!(uk.alliance, Alliance::Enemy).collect()
-}
+        self.seen_units
+            .values()
+            .filter(|uk| uk.is_structure && matches!(uk.alliance, Alliance::Enemy))
+            .collect()
+    }
 }
 
 #[derive(Debug)]

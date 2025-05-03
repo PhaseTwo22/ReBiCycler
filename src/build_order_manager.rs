@@ -6,7 +6,7 @@ use rust_sc2::{game_state::PsionicMatrix, prelude::*};
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction},
     errors::{BuildError, BuildingTransitionError},
-    protoss_bot::ReBiCycler,
+    protoss_bot::{BotState, ReBiCycler},
 };
 
 impl ReBiCycler {
@@ -70,6 +70,7 @@ impl ReBiCycler {
                 has_trainer
             }
             BuildOrderAction::Surrender => true,
+            BuildOrderAction::Chat(_) => true,
         }
     }
 
@@ -104,6 +105,9 @@ impl ReBiCycler {
             }
             BuildCondition::Never => false,
             BuildCondition::Always => true,
+            BuildCondition::TotalAndOrderedAtLeast(thing, count) => {
+                self.counter().all().count(*thing) >= *count
+            }
         }
     }
 
@@ -136,12 +140,16 @@ impl ReBiCycler {
                 self.research(upgrade, ability, researcher)
             }
             BuildOrderAction::Surrender => {
-                self.admit_defeat();
+                self.bot_state = BotState::Surrendering(self.game_step());
                 println!("Surrendering. GG!");
                 if let Err(e) = self.on_end(GameResult::Defeat) {
                     println!("ending the game didn't go well: {e:?}");
                 }
                 let _ = self.leave();
+                Ok(())
+            }
+            BuildOrderAction::Chat(chat) => {
+                self.do_chat(chat);
                 Ok(())
             }
         };

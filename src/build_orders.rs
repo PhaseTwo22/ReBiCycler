@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use rust_sc2::prelude::{AbilityId, UnitTypeId, UpgradeId};
 
+use crate::chatter::ChatAction;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildCondition {
     SupplyAtLeast(u32),
@@ -15,6 +17,7 @@ pub enum BuildCondition {
     DontHaveAnyStarted(UnitTypeId),
     Always,
     Never,
+    TotalAndOrderedAtLeast(UnitTypeId, usize),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildOrderAction {
@@ -81,6 +84,4 @@ impl BuildOrderComponent {
 }
 
 #[cfg(test)]
-mod tests {
-    
-}
+mod tests {}

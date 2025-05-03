@@ -1,5 +1,6 @@
-use crate::build_order_definitions::two_base_charge;
+use crate::build_order_definitions::nexus_first_two_base_charge;
 use crate::build_tree::BuildOrderTree;
+use crate::chatter::ChatAction;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
 use crate::micro::MinerManager;
@@ -8,6 +9,9 @@ use crate::siting::SitingDirector;
 use crate::Tag;
 
 use rust_sc2::prelude::*;
+
+const SURRENDER_DELAY_FRAMES: usize = 200;
+
 #[bot]
 #[derive(Default)]
 pub struct ReBiCycler {
@@ -23,6 +27,7 @@ pub struct ReBiCycler {
     /// gets saved after every game.
     pub display_terminal: DisplayTerminal,
     game_started: bool,
+    pub bot_state: BotState,
 }
 
 /// These are the methods that the game will call that the bot must implement. They are the entry points into all the code we want to run.
@@ -33,7 +38,7 @@ impl Player for ReBiCycler {
 
     /// called once at the start of the game, before the first frame
     fn on_start(&mut self) -> SC2Result<()> {
-        self.build_order = two_base_charge();
+        self.build_order = nexus_first_two_base_charge();
 
         let map_center = self.game_info.map_center;
 
@@ -44,7 +49,7 @@ impl Player for ReBiCycler {
         );
 
         self.game_started = true;
-        self.greeting();
+        self.do_chat(ChatAction::Greeting);
         Ok(())
     }
 
@@ -210,5 +215,15 @@ impl ReBiCycler {
     pub fn log_error(&mut self, message: String) {
         self.display_terminal
             .write_line_to_pane("Errors", &message, true);
+    }
+}
+
+pub enum BotState {
+    Nominal,
+    Surrendering(u32),
+}
+impl Default for BotState {
+    fn default() -> Self {
+        Self::Nominal
     }
 }

@@ -1,5 +1,10 @@
+use errors::AssignmentError;
 use rust_sc2::prelude::*;
-use std::{collections::HashMap, fmt::Debug, hash::Hash};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    hash::Hash,
+};
 
 mod base_manager;
 mod build_order_definitions;
@@ -126,7 +131,7 @@ pub const fn is_minerals(unit: UnitTypeId) -> bool {
 }
 
 #[must_use]
-pub const fn is_protoss_production(unit: UnitTypeId) -> bool {
+pub const fn is_protoss_production(unit: &UnitTypeId) -> bool {
     matches!(
         unit,
         UnitTypeId::Nexus
@@ -239,19 +244,25 @@ pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering
 }
 
 pub fn is_mostly_static_defense(unit: UnitTypeId) -> bool {
-     matches!(unit, 
-     UnitTypeId::SiegeTankSieged,
-     UnitTypeId::WidowMineBurrowed,
-     UnitTypeId::MissileTurret,
-     UnitTypeId::Bunker,
-     UnitTypeId::PlanetaryFortress,
-     UnitTypeId::LiberatorSieged,
-     UnitTypeId::SporeCrawler,
-     UnitTypeId::SpineCrawler,
-     UnitTypeId::LurkerBurrowed,
-     UnitTypeId::BanelingBurrowed,
-     UnitTypeId::PhotonCannon,
-     UnitTypeId::StasisWard,
-     UnitTypeId::ShieldBattery,
-)
+    matches!(
+        unit,
+        UnitTypeId::SiegeTankSieged
+            | UnitTypeId::WidowMineBurrowed
+            | UnitTypeId::MissileTurret
+            | UnitTypeId::Bunker
+            | UnitTypeId::PlanetaryFortress
+            | UnitTypeId::LiberatorAG
+            | UnitTypeId::SporeCrawler
+            | UnitTypeId::SpineCrawler
+            | UnitTypeId::LurkerMPBurrowed
+            | UnitTypeId::BanelingBurrowed
+            | UnitTypeId::PhotonCannon
+            | UnitTypeId::OracleStasisTrap
+            | UnitTypeId::ShieldBattery,
+    )
+}
+
+pub trait Assigns: Display {
+    fn assign(&mut self, unit: Tag) -> Result<(), AssignmentError>;
+    fn remove(&mut self, unit: Tag) -> Result<(), AssignmentError>;
 }

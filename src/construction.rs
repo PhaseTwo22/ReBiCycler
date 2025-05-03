@@ -1,15 +1,136 @@
-8use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
+use std::fmt::Display;
 
-use crate::{protoss_bot::ReBiCycler, Tag};
+use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
+
+use crate::{
+    errors::{AssignmentError, BuildingTransitionError},
+    protoss_bot::ReBiCycler,
+    siting::ConstructionSite,
+    Assigns, Tag,
+};
+
+pub struct ConstructionManager {
+    active_projects: Vec<ConstructionProject>,
+}
+
+pub struct ConstructionProject {
+    building: UnitTypeId,
+    location: ConstructionSite,
+    builder: Option<u64>,
+    needs_detector: bool,
+    detector: Option<u64>,
+    needs_clearing: bool,
+    clearing_crew: Vec<u64>,
+}
+
+impl ConstructionProject {
+    pub fn new(building: UnitTypeId, location: ConstructionSite) -> Self {
+        Self {
+            building,
+            location,
+            builder: None,
+            needs_detector: false,
+            detector: None,
+            needs_clearing: false,
+            clearing_crew: Vec::new(),
+        }
+    }
+}
+impl Display for ConstructionProject {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Construction[{} @ {}]", self.building, self.location)
+    }
+}
+
+impl Assigns for ConstructionProject {
+    fn assign(&mut self, unit: Tag) -> Result<(), crate::errors::AssignmentError> {
+        match unit.unit_type {
+            UnitTypeId::Probe => {
+                if self.builder.is_none() {
+                    self.builder = Some(unit.tag);
+                    Ok(())
+                } else {
+                    Err(AssignmentError {
+                        assignee: unit.to_string(),
+                        manager: self.to_string(),
+                    })
+                }
+            }
+            UnitTypeId::Observer => {
+                if self.detector.is_none() {
+                    self.detector = Some(unit.tag)
+                } else {
+                    Err(AssignmentError {
+                        assignee: unit.to_string(),
+                        manager: self.to_string(),
+                    })
+                }
+            }
+            _ => {
+                self.clearing_crew.push(unit.tag);
+                Ok(())
+            }
+        }
+    }
+
+    fn remove(&mut self, unit: Tag) -> Result<(), AssignmentError> {
+        match unit.unit_type {
+            UnitTypeId::Probe => {
+                if let Some(builder) = self.builder {
+                    if builder == unit.tag {
+                        self.builder = None;
+                        Ok(())
+                    } else {
+                        Err(AssignmentError {})
+                    }
+                } else {
+                    Err(AssignmentError {
+                        assignee: unit.to_string(),
+                        manager: self.to_string(),
+                    })
+                }
+            }
+            UnitTypeId::Observer => {
+                if let Some(detector) = self.detector {
+                    if detector == unit.tag {
+                        self.detector = None;
+                        Ok(())
+                    } else {
+                        Err(AssignmentError {})
+                    }
+                } else {
+                    Err(AssignmentError {
+                        assignee: unit.to_string(),
+                        manager: self.to_string(),
+                    })
+                }
+            }
+
+            _ => {
+                if self.clearing_crew.contains(&unit.tag) {
+                    self.clearing_crew.retain(|tag| *tag != unit.tag);
+                    Ok(())
+                } else {
+                    Err(AssignmentError {
+                        assignee: unit.to_string(),
+                        manager: self.to_string(),
+                    })
+                }
+            }
+        }
+    }
+}
 
 impl ReBiCycler {
-
-    /// tells a worker to build buildimg at location. 
+    /// tells a worker to build buildimg at location.
     /// marks the resources as spent and adds the construction to the queue
-    fn queue_construction(&mut self, builder: Unit, building:UnitTypeId, location: BuildingLocation) -> Result<(), TransitionError>{
-
-
-}
+    fn queue_construction(
+        &mut self,
+        builder: Unit,
+        building: UnitTypeId,
+        location: ConstructionSite,
+    ) -> Result<(), BuildingTransitionError> {
+    }
 
     ///transitions a `BuildingLocation` that finished construction to the completed status
     /// also adds new nexuses and assimilators to the mining manager
@@ -87,29 +208,36 @@ impl ReBiCycler {
             .collect();
     }
 
-
-
     pub fn maintain_supply(&mut self) {
-         if self.supply_cap == 200 {
-return
-}
-         let production_structures = self.units.my.structures.iter().filter(crate::is_production).count();
+        if self.supply_cap == 200 {
+            return;
+        }
+        let production_structures = self
+            .units
+            .my
+            .structures
+            .iter()
+            .filter(|u| crate::is_protoss_production(&u.type_id()))
+            .count();
 
-         let producing_workers = self.counter(). ordered().count(UnitTypeId::Probe) > 0;
+        let producing_workers = self.counter().ordered().count(UnitTypeId::Probe) > 0;
 
-         let wanted_free_supply = production_structures * 2 + if producing_workers{2} else {0};
+        let wanted_free_supply = production_structures * 2 + if producing_workers { 2 } else { 0 };
 
-         if self.supply_left >= wanted_free_supply {
-return
-}
+        if self.supply_left >= wanted_free_supply as u32 {
+            return;
+        }
 
-         let ordered_pylons = self.counter().ordered().count(UnitTypeId::Pylon);
-         let almost_done_nexi = self.units.my.townhalls.iter().filter(|u| !u.is_ready() && u.is_almost_ready()).count();
+        let ordered_pylons = self.counter().ordered().count(UnitTypeId::Pylon);
+        let almost_done_nexi = self
+            .units
+            .my
+            .townhalls
+            .iter()
+            .filter(|u| !u.is_ready() && u.is_almost_ready())
+            .count();
 
-
-         let over_supply = self.supply_used > self.supply_cap;
-         todo()!
-         
-
-}
+        let over_supply = self.supply_used > self.supply_cap;
+        todo!()
+    }
 }

@@ -18,12 +18,21 @@ fn straight_to_twilight() -> TreePointer {
     use BuildOrderAction as A;
     use ConditionOperator as Op;
 
-    TreePointer::new().root("gas 1&2",
-&[ConditionGroup::new([C::AtLeastCount(UnitTypeId::Gateway, 2)], Op::All)],
-&[ConditionGroup::new([C::AtLeastCount(UnitTypeId::Assimilator,2)], Op::All)],
-true,
-Some(Construct(UnitTypeId::Assimilator)),
-true)
+    TreePointer::new()
+        .root(
+            "gas 1&2",
+            &[ConditionGroup::new(
+                &[C::AtLeastCount(UnitTypeId::Gateway, 2)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::AtLeastCount(UnitTypeId::Assimilator, 2)],
+                Op::All,
+            )],
+            true,
+            Some(A::Construct(UnitTypeId::Assimilator)),
+            true,
+        )
         .child(
             "cybercore",
             &[ConditionGroup::new(
@@ -56,7 +65,7 @@ true)
             true,
         )
 }
-/// an opener: probes to 14, pylon, resume probes, nexus, then two gateways. 
+/// an opener: probes to 14, pylon, resume probes, nexus, then two gateways.
 fn nexus_first() -> TreePointer {
     use BuildCondition as C;
     use BuildOrderAction as A;
@@ -91,14 +100,21 @@ fn nexus_first() -> TreePointer {
             true,
             Some(A::Construct(UnitTypeId::Nexus)),
             true,
-        ).leaf(
-"probe to 38",
-&[ConditionGroup::new(&[C::AtLeastCount(UnitTypeId::Gateway, 1)])],
-&[ConditionGroup::new(&[C::TotalAndOrdered(UnitTypeId::Probe, 38)])],
-false,
-Some(A::Train(UnitTypeId::Probe)),
-true,
-)
+        )
+        .leaf(
+            "probe to 38",
+            &[ConditionGroup::new(
+                &[C::AtLeastCount(UnitTypeId::Gateway, 1)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::TotalAndOrderedAtLeast(UnitTypeId::Probe, 38)],
+                Op::All,
+            )],
+            false,
+            Some(A::Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe)),
+            true,
+        )
         .child(
             "two gateways",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -209,7 +225,7 @@ impl TreePointer {
         }
         self
     }
-/// Add a leaf to the graph to build an Assimilator. will build assimilators until `number` is reached. 
+    /// Add a leaf to the graph to build an Assimilator. will build assimilators until `number` is reached.
     fn gas_leaf(self, number: usize) -> Self {
         use BuildCondition as C;
         use BuildOrderAction as A;
@@ -230,10 +246,17 @@ impl TreePointer {
             true,
         )
     }
-/// Adds a root node that does nothing, with the given name, if any. 
-    fn empty_root(self, name:Option<&str>) -> Self {
-        self.root(name.unwrap_or("empty_root"), &[], &[], false, None, name.is_some())
-}
+    /// Adds a root node that does nothing, with the given name, if any.
+    fn empty_root(self, name: Option<&str>) -> Self {
+        self.root(
+            name.unwrap_or("empty_root"),
+            &[],
+            &[],
+            false,
+            None,
+            name.is_some(),
+        )
+    }
 }
 
 #[cfg(test)]

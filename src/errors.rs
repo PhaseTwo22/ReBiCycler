@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use rust_sc2::{
     ids::{AbilityId, UnitTypeId, UpgradeId},
@@ -7,7 +7,7 @@ use rust_sc2::{
 
 use crate::{
     siting::{BuildingStatus, BuildingTransition},
-    Tag,
+    Assigns, Tag,
 };
 
 pub struct UnitEmploymentError(pub String);
@@ -28,8 +28,8 @@ impl Debug for InvalidUnitError {
 pub enum BuildError {
     CantPlace(Point2, rust_sc2::ids::UnitTypeId),
     CantTransitionBuildingLocation(BuildingTransitionError),
-    NoBuildingLocationHere(Point2),
-    NoBuildingLocationForFinishedBuilding(UnitTypeId),
+    NoConstructionSiteHere(Point2),
+    NoConstructionSiteForFinishedBuilding(UnitTypeId),
     NoPlacementLocations,
     CantAfford,
     InvalidUnit(String),
@@ -54,4 +54,41 @@ pub enum BuildingTransitionError {
 #[derive(Debug)]
 pub enum MicroError {
     UnitNotRegistered(Tag),
+}
+
+pub struct AssignmentError {
+    assignee: Tag,
+    manager: Box<dyn Assigns>,
+    reason: AssignmentIssue,
+}
+
+impl AssignmentError {
+    pub fn new(
+        assignee: Tag,
+        manager: Box<impl Assigns + 'static>,
+        reason: AssignmentIssue,
+    ) -> Self {
+        Self {
+            assignee,
+            manager,
+            reason,
+        }
+    }
+}
+
+impl Display for AssignmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Can't assign {} to {}: {:?}",
+            self.assignee, self.manager, self.reason
+        )
+    }
+}
+
+#[derive(Debug)]
+pub enum AssignmentIssue {
+    InvalidUnit,
+    UnitAlreadyAssigned,
+    UnitNotAssigned,
 }
