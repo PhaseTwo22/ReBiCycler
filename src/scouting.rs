@@ -1,12 +1,19 @@
-use rust-sc2::prelude::Unit;
 use crate::protoss_bot::ReBiCycler;
+use rust_sc2::{action::Target, prelude::Unit};
 impl ReBiCycler {
-
-    /// clears unit orders and sends it to every non-visible expansion location. 
-    pub fn send_on_expansion_scouting(&self, unit: &Unit {
+    /// clears unit orders and sends it to every non-visible expansion location.
+    pub fn send_on_expansion_scouting(&self, unit: &Unit) {
         unit.stop(false);
-        self.expansions.iter().filter_map(|expo| if !self.is_visible(expo.location) {Some(unit.move_to(expo.location)} else {None}).collect();
-        
+        let _: () = self
+            .expansions
+            .iter()
+            .filter_map(|expo| {
+                if !self.is_visible(expo.loc) {
+                    Some(unit.move_to(Target::Pos(expo.loc), true))
+                } else {
+                    None
+                }
+            })
+            .collect();
     }
-
 }

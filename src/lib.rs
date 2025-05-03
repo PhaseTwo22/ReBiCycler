@@ -5,7 +5,7 @@ use std::{
     fmt::{Debug, Display},
     hash::Hash,
 };
-
+mod army;
 mod base_manager;
 mod build_order_definitions;
 mod build_order_manager;
@@ -20,6 +20,7 @@ mod micro;
 mod monitor;
 pub mod protoss_bot;
 mod readout;
+mod scouting;
 mod siting;
 
 pub const PYLON_POWER_RADIUS: f32 = 6.5;
@@ -248,7 +249,8 @@ pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering
     d2p1.total_cmp(&d2p2)
 }
 
-#[must_use] pub const fn is_mostly_static_defense(unit: UnitTypeId) -> bool {
+#[must_use]
+pub const fn is_mostly_static_defense(unit: UnitTypeId) -> bool {
     matches!(
         unit,
         UnitTypeId::SiegeTankSieged
