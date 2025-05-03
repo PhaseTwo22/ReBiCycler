@@ -1,6 +1,7 @@
+use crate::army::ArmyController;
 use crate::build_order_definitions::nexus_first_two_base_charge;
 use crate::build_tree::BuildOrderTree;
-use crate::chatter::ChatAction;
+use crate::chatter::{ChatAction, ChatController};
 use crate::construction::ConstructionManager;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
@@ -11,7 +12,7 @@ use crate::Tag;
 
 use rust_sc2::prelude::*;
 
-const SURRENDER_DELAY_FRAMES: usize = 200;
+const SURRENDER_DELAY_FRAMES: u32 = 200;
 
 #[bot]
 #[derive(Default)]
@@ -22,10 +23,14 @@ pub struct ReBiCycler {
     pub siting_director: SitingDirector,
     /// a place to store persistent knowledge about the game state
     pub knowledge: Knowledge,
+    /// controls the army and assignments and stuff
+    pub army_manager: ArmyController,
     /// manages workers and executes speed mining
     pub mining_manager: MinerManager,
     /// Manages construction projects
     pub construction_manager: ConstructionManager,
+    /// Does chat stuff.
+    pub chat_controller: ChatController,
     /// a text terminal for what's going on inside the bot.
     /// gets saved after every game.
     pub display_terminal: DisplayTerminal,
@@ -58,6 +63,19 @@ impl Player for ReBiCycler {
 
     /// called each frame of the game
     fn on_step(&mut self, frame_no: usize) -> SC2Result<()> {
+        match self.bot_state {
+            BotState::Surrendering(done_frame) => {
+                if done_frame + SURRENDER_DELAY_FRAMES > self.game_step() {
+                    println!("Surrendering. GG!");
+                    if let Err(e) = self.on_end(GameResult::Defeat) {
+                        println!("ending the game didn't go well: {e:?}");
+                    }
+                    let _ = self.leave();
+                }
+            }
+            BotState::Nominal => (),
+        }
+
         if frame_no == 0 {
             self.first_frame();
         }

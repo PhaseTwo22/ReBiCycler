@@ -141,11 +141,7 @@ impl ReBiCycler {
             }
             BuildOrderAction::Surrender => {
                 self.bot_state = BotState::Surrendering(self.game_step());
-                println!("Surrendering. GG!");
-                if let Err(e) = self.on_end(GameResult::Defeat) {
-                    println!("ending the game didn't go well: {e:?}");
-                }
-                let _ = self.leave();
+
                 Ok(())
             }
             BuildOrderAction::Chat(chat) => {
