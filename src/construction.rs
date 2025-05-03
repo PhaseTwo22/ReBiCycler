@@ -1,4 +1,4 @@
-use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
+8use rust_sc2::{ids::UnitTypeId, prelude::DistanceIterator, unit::Unit};
 
 use crate::{protoss_bot::ReBiCycler, Tag};
 
@@ -86,4 +86,30 @@ impl ReBiCycler {
             })
             .collect();
     }
+
+
+
+    pub fn maintain_supply(&mut self) {
+         if self.supply_cap == 200 {
+return
+}
+         let production_structures = self.units.my.structures.iter().filter(crate::is_production).count();
+
+         let producing_workers = self.counter(). ordered().count(UnitTypeId::Probe) > 0;
+
+         let wanted_free_supply = production_structures * 2 + if producing_workers{2} else {0};
+
+         if self.supply_left >= wanted_free_supply {
+return
+}
+
+         let ordered_pylons = self.counter().ordered().count(UnitTypeId::Pylon);
+         let almost_done_nexi = self.units.my.townhalls.iter().filter(|u| !u.is_ready() && u.is_almost_ready()).count();
+
+
+         let over_supply = self.supply_used > self.supply_cap;
+         todo()!
+         
+
+}
 }
