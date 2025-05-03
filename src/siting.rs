@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
 };
 
 use crate::{
@@ -78,132 +78,63 @@ impl BuildingStatus {
     }
 }
 
-pub struct GasLocation {
-    pub geyser_tag: u64,
-    pub location: Point2,
+pub struct ConstructionSite {
     pub status: BuildingStatus,
+    pub location: LocationType,
 }
 
-impl GasLocation {
-    pub fn from_unit(unit: &Unit) -> Self {
-        Self {
-            geyser_tag: unit.tag(),
-            location: unit.position(),
-            status: BuildingStatus::Free(
-                Some(UnitTypeId::Assimilator),
-                crate::siting::PylonPower::Depowered,
-            ),
-        }
+impl ConstructionSite {
+    pub const fn new(intention: Option<UnitTypeId>, location: LocationType) -> Self {
+        let status = BuildingStatus::Free(intention, PylonPower::Depowered);
+
+        Self { location, status }
     }
 
-    pub fn is_here(&self, building: &Tag) -> bool {
-        use BuildingStatus as S;
-        match self.status {
-            S::Built(tag, _) | S::Constructing(tag, _) => *building == tag,
-            _ => false,
-        }
-    }
-
-    pub fn transition(
-        &mut self,
-        transition: BuildingTransition,
-    ) -> Result<(), BuildingTransitionError> {
-        use BuildingStatus as S;
-        use BuildingTransition as T;
-        let new_status = match (transition, self.status.clone()) {
-            (T::DePower, state) => state.depower(),
-            (T::RePower, state) => Ok(state.repower()),
-            (T::Construct(tag), S::Free(_, power)) => {
-                if self.status.can_build(tag.unit_type) {
-                    Ok(S::Constructing(tag, power))
-                } else {
-                    Err(BuildingTransitionError::InvalidTransition {
-                        from: self.status.clone(),
-                        change: transition,
-                    })
-                }
-            }
-            (T::Obstruct, S::Free(intent, power) | S::Blocked(intent, power)) => {
-                Ok(S::Blocked(intent, power))
-            }
-
-            (T::Finish, S::Constructing(tag, power)) => Ok(S::Built(tag, power)),
-
-            (T::Destroy, S::Built(tag, power) | S::Constructing(tag, power)) => {
-                Ok(S::Free(Some(tag.unit_type), power))
-            }
-            (T::UnObstruct, S::Blocked(intent, power) | S::Free(intent, power)) => {
-                Ok(S::Free(intent, power))
-            }
-
-            (T::UnObstruct | T::Morph(_), _)
-            | (T::Finish | T::Destroy, S::Free(_, _))
-            | (T::Obstruct | T::Finish | T::Construct(_), S::Built(_, _))
-            | (T::Obstruct | T::Construct(_), S::Constructing(_, _))
-            | (T::Finish | T::Destroy | T::Construct(_), S::Blocked(_, _)) => {
-                Err(BuildingTransitionError::InvalidTransition {
-                    from: self.status.clone(),
-                    change: transition,
-                })
-            }
-        }?;
-        self.status = new_status;
-        Ok(())
-    }
-}
-
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub enum PylonPower {
-    Powered,
-    Depowered,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum BuildingTransition {
-    Destroy,
-    Obstruct,
-    UnObstruct,
-    DePower,
-    RePower,
-    Construct(Tag),
-    Finish,
-    Morph(UnitTypeId),
-}
-
-const PYLON_DISTANCE_FROM_NEXUS: f32 = 9.0;
-#[derive(PartialEq, Clone, Eq)]
-pub struct BuildingLocation {
-    pub location: Point2,
-    status: BuildingStatus,
-    size: SlotSize,
-}
-impl Display for BuildingLocation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}: {:?}, {:?}", self.location, self.status, self.size)
-    }
-}
-impl BuildingLocation {
-    pub const fn new(location: Point2, size: SlotSize, intention: Option<UnitTypeId>) -> Self {
-        Self {
-            location,
-            status: BuildingStatus::Free(intention, PylonPower::Depowered),
-            size,
-        }
-    }
     pub const fn pylon(location: Point2) -> Self {
-        Self::new(location, SlotSize::Small, Some(UnitTypeId::Pylon))
+        Self::new(
+            Some(UnitTypeId::Pylon),
+            LocationType::AtPoint(location, SlotSize::Small),
+        )
+    }
+
+    pub const fn nexus(location: Point2) -> Self {
+        Self::new(
+            Some(UnitTypeId::Nexus),
+            LocationType::AtPoint(location, SlotSize::Townhall),
+        )
     }
 
     pub const fn standard(location: Point2) -> Self {
-        Self::new(location, SlotSize::Standard, None)
+        Self::new(None, LocationType::AtPoint(location, SlotSize::Standard))
+    }
+
+    pub fn new_gas(geyser: &Unit) -> Self {
+        Self::new(
+            Some(UnitTypeId::Assimilator),
+            LocationType::from_geyser(geyser),
+        )
     }
 
     pub const fn is_free(&self) -> bool {
         matches!(self.status, BuildingStatus::Free(_, _))
     }
 
+    pub const fn is_gas(&self) -> bool {
+        matches!(self.location, LocationType::OnGeyser(_, _))
+    }
+
     pub const fn size(&self) -> SlotSize {
-        self.size
+        match self.location {
+            LocationType::AtPoint(_p, s) => s,
+            LocationType::OnGeyser(_g, _p) => SlotSize::Standard,
+        }
+    }
+
+    pub const fn location(&self) -> Point2 {
+        match self.location {
+            LocationType::AtPoint(p, _s) => p,
+            LocationType::OnGeyser(_g, p) => p,
+        }
     }
 
     pub const fn is_mine(&self) -> bool {
@@ -225,7 +156,7 @@ impl BuildingLocation {
         match self.status {
             BuildingStatus::Free(intent, _) => self
                 .status
-                .can_build(intent.unwrap_or_else(|| self.size.default_checker())),
+                .can_build(intent.unwrap_or_else(|| self.size().default_checker())),
             _ => false,
         }
     }
@@ -252,7 +183,7 @@ impl BuildingLocation {
         // when it's maybe blocked.
         match self.status {
             BuildingStatus::Blocked(intent, _) | BuildingStatus::Free(intent, _) => {
-                intent.or_else(|| Some(self.size.default_checker()))
+                intent.or_else(|| Some(self.size().default_checker()))
             }
             _ => None,
         }
@@ -323,6 +254,37 @@ impl BuildingLocation {
         Ok(())
     }
 }
+
+pub enum LocationType {
+    OnGeyser(u64, Point2),
+    AtPoint(Point2, SlotSize),
+}
+
+impl LocationType {
+    pub fn from_geyser(geyser: &Unit) -> Self {
+        Self::OnGeyser(geyser.tag(), geyser.position())
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub enum PylonPower {
+    Powered,
+    Depowered,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum BuildingTransition {
+    Destroy,
+    Obstruct,
+    UnObstruct,
+    DePower,
+    RePower,
+    Construct(Tag),
+    Finish,
+    Morph(UnitTypeId),
+}
+
+const PYLON_DISTANCE_FROM_NEXUS: f32 = 9.0;
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum SlotSize {
@@ -395,29 +357,37 @@ impl SlotSize {
 
 #[derive(Default)]
 pub struct SitingDirector {
-    building_locations: HashMap<Point2, BuildingLocation>,
-    gas_locations: HashMap<u64, GasLocation>,
+    sites: HashMap<Point2, ConstructionSite>,
 }
 impl Debug for SitingDirector {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let small_sites = self
-            .building_locations
-            .values()
-            .filter(|bl| bl.size == SlotSize::Small && bl.could_build())
-            .count();
-        let standard_sites = self
-            .building_locations
-            .values()
-            .filter(|bl| bl.size == SlotSize::Standard && bl.could_build())
-            .count();
-        let large_sites = self
-            .building_locations
-            .values()
-            .filter(|bl| bl.size == SlotSize::Townhall && bl.could_build())
-            .count();
+        let mut smalls = 0;
+        let mut standards = 0;
+        let mut larges = 0;
+        let mut gasses = 0;
+
+        for site in self.sites.values() {
+            if site.is_gas() {
+                gasses += 1;
+            } else {
+                match site.size() {
+                    SlotSize::Small => {
+                        smalls += 1;
+                    }
+                    SlotSize::Standard => {
+                        standards += 1;
+                    }
+                    SlotSize::Townhall => {
+                        larges += 1;
+                    }
+                    SlotSize::Tumor => (),
+                }
+            }
+        }
         write!(
             f,
-            "Sites: S:{small_sites:?} M:{standard_sites:?} L:{large_sites:?}"
+            "Sites: S:{:?} M:{:?} L:{:?} G:{:?}",
+            smalls, standards, larges, gasses,
         )
     }
 }
@@ -429,33 +399,29 @@ impl SitingDirector {
         geysers: Units,
         map_center: Point2,
     ) {
-        let _: () = expansions
+        let structures: Vec<(Point2, ConstructionSite)> = expansions
             .iter()
-            .map(|e| self.build_expansion_template(e.loc, e.center, map_center))
+            .flat_map(|e| self.expansion_template(e.loc, e.center, map_center))
+            .map(|cs| (cs.location(), cs))
             .collect();
 
-        let _: () = geysers
-            .into_iter()
-            .map(|u| {
-                self.gas_locations
-                    .insert(u.tag(), GasLocation::from_unit(&u));
-            })
+        let gasses: Vec<(Point2, ConstructionSite)> = geysers
+            .iter()
+            .map(|u| ConstructionSite::new_gas(u))
+            .map(|cs| (cs.location(), cs))
             .collect();
+
+        self.sites.extend(structures);
+        self.sites.extend(gasses);
     }
 
-    pub fn iter(
-        &self,
-    ) -> std::collections::hash_map::Iter<'_, rust_sc2::prelude::Point2, BuildingLocation> {
-        self.building_locations.iter()
-    }
-
-    pub fn iter_gas(&self) -> std::collections::hash_map::Iter<'_, u64, GasLocation> {
-        self.gas_locations.iter()
+    pub fn iter(&self) -> std::collections::hash_map::Values<'_, Point2, ConstructionSite> {
+        self.sites.values()
     }
 
     pub fn add_initial_nexus(&mut self, nexus: &Unit) -> Result<(), BuildError> {
         let home_loc = self
-            .building_locations
+            .sites
             .get_mut(&nexus.position())
             .ok_or_else(|| BuildError::CantPlace(nexus.position(), nexus.type_id()))?;
         home_loc.status = BuildingStatus::Built(Tag::from_unit(nexus), PylonPower::Depowered);
@@ -464,17 +430,16 @@ impl SitingDirector {
 
     pub fn add_assimilator(&mut self, building: &Unit) -> Result<(), BuildError> {
         let geyser = self
-            .gas_locations
-            .values_mut()
-            .find(|gl| gl.location == building.position())
-            .ok_or_else(|| BuildError::NoBuildingLocationHere(building.position()))?;
+            .sites
+            .get_mut(&building.position())
+            .ok_or_else(|| BuildError::NoConstructionSiteHere(building.position()))?;
         geyser.status = BuildingStatus::Built(Tag::from_unit(building), PylonPower::Depowered);
         Ok(())
     }
 
     pub fn lose_assimilator(&mut self, building: Tag) -> Result<(), UnitEmploymentError> {
         let geyser = self
-            .gas_locations
+            .sites
             .values_mut()
             .find(|gl| gl.is_here(&building))
             .ok_or_else(|| {
@@ -486,9 +451,9 @@ impl SitingDirector {
         Ok(())
     }
 
-    pub fn get_free_geyser(&self, near: Point2, distance: f32) -> Option<&GasLocation> {
-        self.gas_locations.values().find(|gl| {
-            gl.location.distance(near) <= distance && gl.status.can_build(UnitTypeId::Assimilator)
+    pub fn get_free_geyser(&self, near: Point2, distance: f32) -> Option<&ConstructionSite> {
+        self.sites.values().find(|gl| {
+            gl.location().distance(near) <= distance && gl.status.can_build(UnitTypeId::Assimilator)
         })
     }
 
@@ -502,29 +467,29 @@ impl SitingDirector {
             )))
         }?;
 
-        self.building_locations.get_mut(&location).map_or(
-            Err(BuildError::NoBuildingLocationHere(location)),
+        self.sites.get_mut(&location).map_or(
+            Err(BuildError::NoConstructionSiteHere(location)),
             |spot| {
                 spot.transition(BuildingTransition::Construct(tag))
-                    .map_err(|_| BuildError::NoBuildingLocationHere(location))
+                    .map_err(|_| BuildError::NoConstructionSiteHere(location))
             },
         )
     }
 
     pub fn finish_construction(&mut self, structure: &Unit) -> Result<(), BuildError> {
         if structure.is_geyser() {
-            self.gas_locations
-                .get_mut(&structure.tag())
+            self.sites
+                .get_mut(&structure.position())
                 .ok_or_else(|| {
-                    BuildError::NoBuildingLocationForFinishedBuilding(structure.type_id())
+                    BuildError::NoConstructionSiteForFinishedBuilding(structure.type_id())
                 })?
                 .transition(BuildingTransition::Finish)
                 .map_err(BuildError::CantTransitionBuildingLocation)
         } else {
-            self.building_locations
+            self.sites
                 .get_mut(&structure.position())
                 .ok_or_else(|| {
-                    BuildError::NoBuildingLocationForFinishedBuilding(structure.type_id())
+                    BuildError::NoConstructionSiteForFinishedBuilding(structure.type_id())
                 })?
                 .transition(BuildingTransition::Finish)
                 .map_err(BuildError::CantTransitionBuildingLocation)
@@ -536,20 +501,22 @@ impl SitingDirector {
         location: Point2,
         make_obstructed: BuildingTransition,
     ) -> Result<(), Either<BuildError, BuildingTransitionError>> {
-        self.building_locations
+        self.sites
             .get_mut(&location)
-            .ok_or(Either::Left(BuildError::NoBuildingLocationHere(location)))?
+            .ok_or(Either::Left(BuildError::NoConstructionSiteHere(location)))?
             .transition(make_obstructed)
-            .map_err(|_| Either::Left(BuildError::NoBuildingLocationHere(location)))
+            .map_err(|_| Either::Left(BuildError::NoConstructionSiteHere(location)))
     }
 
-    fn build_expansion_template(
-        &mut self,
+    fn expansion_template(
+        &self,
         base_location: Point2,
         mineral_center: Point2,
 
         map_center: Point2,
-    ) {
+    ) -> Vec<ConstructionSite> {
+        let mut new_sites = Vec::new();
+
         let distance_to_minerals = 6.0;
         let pylon_behind_location =
             { base_location.towards(mineral_center, distance_to_minerals + 3.0) };
@@ -563,30 +530,25 @@ impl SitingDirector {
             [Some(pylon_behind_location), Some(spots[0]), Some(spots[1])]
         });
 
-        let _: () = places
+        let pylon_patterns: Vec<ConstructionSite> = places
             .iter()
             .flatten()
-            .map(|p| self.add_pylon_site(p.round()))
+            .flat_map(|p| self.pylon_pattern(p.round()))
             .collect();
 
-        self.building_locations.insert(
-            base_location,
-            BuildingLocation {
-                location: base_location,
-                status: BuildingStatus::Free(Some(UnitTypeId::Nexus), PylonPower::Depowered),
-                size: SlotSize::Townhall,
-            },
-        );
+        new_sites.extend(pylon_patterns);
+        new_sites.push(ConstructionSite::nexus(base_location));
+        new_sites
     }
 
     pub fn get_available_building_sites<'a>(
         &'a self,
         size: &'a SlotSize,
         type_id: &'a UnitTypeId,
-    ) -> impl 'a + Iterator<Item = &'a BuildingLocation> {
-        self.building_locations.values().filter(|bl| {
+    ) -> impl 'a + Iterator<Item = &'a ConstructionSite> {
+        self.sites.values().filter(|bl| {
             let fits_status = bl.status.can_build(*type_id);
-            let fits_size = bl.size == *size;
+            let fits_size = bl.size() == *size;
             fits_size && fits_status
         })
     }
@@ -596,15 +558,15 @@ impl SitingDirector {
         size: SlotSize,
         type_id: UnitTypeId,
         priority_closure: F,
-    ) -> Option<&BuildingLocation>
+    ) -> Option<&ConstructionSite>
     where
-        F: Fn(&&BuildingLocation, &&BuildingLocation) -> Ordering,
+        F: Fn(&&ConstructionSite, &&ConstructionSite) -> Ordering,
     {
-        self.building_locations
+        self.sites
             .values()
             .filter(|bl| {
                 let fits_intention = bl.status.can_build(type_id);
-                let fits_size = bl.size == size;
+                let fits_size = bl.size() == size;
                 fits_size && fits_intention
             })
             .min_by(priority_closure)
@@ -635,7 +597,7 @@ impl SitingDirector {
             .collect()
     }
 
-    pub fn pylon_flower(center_point: Point2) -> Vec<BuildingLocation> {
+    pub fn pylon_flower(center_point: Point2) -> Vec<ConstructionSite> {
         let pylon_radius = SlotSize::Small.radius();
         let pylon_width = SlotSize::Small.width();
         let standard_radius = SlotSize::Standard.radius();
@@ -647,14 +609,12 @@ impl SitingDirector {
 
         Self::rotate_to_four_quadrants(&to_the_right)
             .iter()
-            .map(|point| {
-                BuildingLocation::new(*point, SlotSize::Standard, Some(UnitTypeId::Gateway))
-            })
-            .chain(vec![BuildingLocation::pylon(center_point)])
+            .map(|point| ConstructionSite::standard(*point))
+            .chain(vec![ConstructionSite::pylon(center_point)])
             .collect()
     }
 
-    pub fn pylon_interceptor(center_point: Point2) -> Vec<BuildingLocation> {
+    pub fn pylon_interceptor(center_point: Point2) -> Vec<ConstructionSite> {
         let pylon_radius = SlotSize::Small.radius();
 
         let standard_radius = SlotSize::Standard.radius();
@@ -674,19 +634,17 @@ impl SitingDirector {
 
         Self::mirror_to_four_quadrants(&l_shape_to_the_right)
             .iter()
-            .map(|point| BuildingLocation::standard(center_point + *point))
-            .chain(vec![BuildingLocation::pylon(center_point)])
+            .map(|point| ConstructionSite::standard(center_point + *point))
+            .chain(vec![ConstructionSite::pylon(center_point)])
             .collect()
     }
 
-    pub fn add_pylon_site(&mut self, location: Point2) {
-        for bl in Self::pylon_interceptor(location) {
-            self.building_locations.insert(bl.location, bl);
-        }
+    pub fn pylon_pattern(&self, location: Point2) -> Vec<ConstructionSite> {
+        Self::pylon_interceptor(location)
     }
 
     pub fn find_and_destroy_building(&mut self, building: &Tag) -> Result<(), BuildError> {
-        self.building_locations
+        self.sites
             .values_mut()
             .find(|l| l.is_here(building))
             .ok_or_else(|| {
@@ -700,19 +658,16 @@ impl SitingDirector {
             })
     }
     pub fn check_morph_gateways(&mut self, warpgates: Units) -> Vec<BuildingTransitionError> {
-        let gateways = self
-            .building_locations
-            .values_mut()
-            .filter_map(|bl| match bl.status {
-                BuildingStatus::Built(
-                    Tag {
-                        tag,
-                        unit_type: UnitTypeId::Gateway,
-                    },
-                    _,
-                ) => Some((bl, tag)),
-                _ => None,
-            });
+        let gateways = self.sites.values_mut().filter_map(|bl| match bl.status {
+            BuildingStatus::Built(
+                Tag {
+                    tag,
+                    unit_type: UnitTypeId::Gateway,
+                },
+                _,
+            ) => Some((bl, tag)),
+            _ => None,
+        });
         let changed: Vec<BuildingTransitionError> = gateways
             .filter(|(_, gw)| warpgates.contains_tag(*gw))
             .map(|(bl, _)| bl.transition(BuildingTransition::Morph(UnitTypeId::WarpGate)))
@@ -745,9 +700,9 @@ impl ReBiCycler {
         let position = self
             .siting_director
             .get_available_building_site_prioritized(size, structure_type, |a, b| {
-                a.location
+                a.location()
                     .distance(self.start_location)
-                    .total_cmp(&b.location.distance(self.start_location))
+                    .total_cmp(&b.location().distance(self.start_location))
             })
             .ok_or(BuildError::NoPlacementLocations)?;
 
@@ -755,14 +710,14 @@ impl ReBiCycler {
             .units
             .my
             .workers
-            .closest(position.location)
+            .closest(position.location())
             .ok_or(BuildError::NoTrainer)?
             .clone();
 
         let builder_tag = builder.tag();
         let builder_conscripted = self.mining_manager.remove_miner(builder_tag);
 
-        builder.build(structure_type, position.location, false);
+        builder.build(structure_type, position.location(), false);
         if builder_conscripted {
             self.log_error(format!(
                 "took builder {builder_tag} from mining to build {structure_type:?}"
@@ -801,10 +756,10 @@ impl ReBiCycler {
 
         let errors: Vec<BuildingTransitionError> = self
             .siting_director
-            .building_locations
+            .sites
             .values_mut()
             .filter_map(|bl| {
-                if bl.location.distance(power_point) <= change_radius {
+                if bl.location().distance(power_point) <= change_radius {
                     bl.transition(change_type).err()
                 } else {
                     None
@@ -821,14 +776,10 @@ impl ReBiCycler {
         &mut self,
     ) -> Vec<Either<BuildError, BuildingTransitionError>> {
         // a site is worth checking for this update if it's blocked or its free, constructing and built locations shouldn't be checked
-        let worth_checking =
-            self.siting_director
-                .building_locations
-                .iter()
-                .filter_map(|(p, bl)| {
-                    bl.placement_checker()
-                        .map(|checker| (p.to_owned(), checker))
-                });
+        let worth_checking = self.siting_director.sites.iter().filter_map(|(p, bl)| {
+            bl.placement_checker()
+                .map(|checker| (p.to_owned(), checker))
+        });
 
         // then we check if those locations are actually obstructed
         #[allow(clippy::needless_collect)]
@@ -913,19 +864,25 @@ impl ReBiCycler {
     pub fn take_gas(&self, near: Point2) -> Result<(), BuildError> {
         let gas = self
             .siting_director
-            .get_free_geyser(near, ACCEPTABLE_GAS_DISTANCE);
-        if let Some(geyser) = gas {
-            let builder = self
-                .units
-                .my
-                .workers
-                .closest(geyser.location)
-                .ok_or(BuildError::NoTrainer)?;
-            builder.build_gas(geyser.geyser_tag, false);
+            .get_free_geyser(near, ACCEPTABLE_GAS_DISTANCE)
+            .ok_or(BuildError::NoPlacementLocations)?;
+
+        let builder = self
+            .units
+            .my
+            .workers
+            .closest(gas.location())
+            .ok_or(BuildError::NoTrainer)?;
+
+        if let LocationType::OnGeyser(geyser, _point) = gas.location {
+            builder.build_gas(geyser, false);
             builder.sleep(5);
             Ok(())
         } else {
-            Err(BuildError::NoPlacementLocations)
+            Err(BuildError::CantPlace(
+                gas.location(),
+                UnitTypeId::Assimilator,
+            ))
         }
     }
 }
@@ -947,7 +904,7 @@ mod tests {
 
     #[test]
     fn pylon_transitions_ok() {
-        let mut pylon = BuildingLocation::pylon(Point2::new(0.0, 0.0));
+        let mut pylon = ConstructionSite::pylon(Point2::new(0.0, 0.0));
 
         assert!(!pylon.needs_power());
         assert!(pylon.is_free());
@@ -969,7 +926,7 @@ mod tests {
 
     #[test]
     fn cant_build_unpowered_gateway() {
-        let mut gate_location = BuildingLocation::standard(ORIGIN);
+        let mut gate_location = ConstructionSite::standard(ORIGIN);
 
         assert!(gate_location
             .transition(BuildingTransition::Construct(Tag {
@@ -987,14 +944,14 @@ mod tests {
 
     #[test]
     fn point_containers_ok() {
-        let pylon_location = BuildingLocation::pylon(ORIGIN);
+        let pylon_location = ConstructionSite::pylon(ORIGIN);
         let points: Vec<(u32, u32)> = pylon_location.size().contained_points(ORIGIN).collect();
         assert_eq!(points, vec![(0, 0), (0, 1), (1, 0), (1, 1)]);
 
-        let gate_location = BuildingLocation::standard(Point2::new(1.5, 1.5));
+        let gate_location = ConstructionSite::standard(Point2::new(1.5, 1.5));
         let gate_points: Vec<(u32, u32)> = gate_location
             .size()
-            .contained_points(gate_location.location)
+            .contained_points(gate_location.location())
             .collect();
         assert_eq!(
             gate_points,
@@ -1018,7 +975,7 @@ mod tests {
         let mut touch_counts: HashMap<(u32, u32), usize> = HashMap::new();
 
         for bl in pattern {
-            let contained_points = bl.size().contained_points(bl.location);
+            let contained_points = bl.size().contained_points(bl.location());
             for (x, y) in contained_points {
                 touch_counts
                     .entry((x, y))
