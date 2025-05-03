@@ -9,12 +9,12 @@ impl ReBiCycler {
     fn admit_defeat() -> String {
         "Tertiary redundancies failing. Distress beacon launched. Initializing self-destruct... [(gg)]".to_string()
     }
-    fn taunt(unit: UnitTypeId) -> String {
-        "".to_string()
+    const fn taunt(unit: UnitTypeId) -> String {
+        String::new()
     }
 
-    fn anticipate(level: u8) -> String {
-        "".to_string()
+    const fn anticipate(level: u8) -> String {
+        String::new()
     }
 
     pub fn do_chat(&mut self, action: ChatAction) {

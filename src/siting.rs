@@ -1,8 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    fmt::{self, write, Debug, Display},
-    os::linux::raw::stat,
+    fmt::{self, Debug, Display},
 };
 
 use crate::{
@@ -93,10 +92,10 @@ impl Display for ConstructionSite {
             BuildingStatus::Blocked(_, _) => "Blocked",
         };
         let location_part = match self.location {
-            LocationType::AtPoint(p, s) => format!("{}({:.1},{:.1})", s.to_string(), p.x, p.y),
+            LocationType::AtPoint(p, s) => format!("{}({:.1},{:.1})", s, p.x, p.y),
             LocationType::OnGeyser(_g, p) => format!("OnGeyser({},{})", p.x, p.y),
         };
-        write!(f, "{}{}", status_part, location_part)
+        write!(f, "{status_part}{location_part}")
     }
 }
 
@@ -104,7 +103,7 @@ impl ConstructionSite {
     pub const fn new(intention: Option<UnitTypeId>, location: LocationType) -> Self {
         let status = BuildingStatus::Free(intention, PylonPower::Depowered);
 
-        Self { location, status }
+        Self { status, location }
     }
 
     pub const fn pylon(location: Point2) -> Self {
@@ -417,8 +416,7 @@ impl Debug for SitingDirector {
         }
         write!(
             f,
-            "Sites: S:{:?} M:{:?} L:{:?} G:{:?}",
-            smalls, standards, larges, gasses,
+            "Sites: S:{smalls:?} M:{standards:?} L:{larges:?} G:{gasses:?}",
         )
     }
 }
@@ -438,7 +436,7 @@ impl SitingDirector {
 
         let gasses: Vec<(Point2, ConstructionSite)> = geysers
             .iter()
-            .map(|u| ConstructionSite::new_gas(u))
+            .map(ConstructionSite::new_gas)
             .map(|cs| (cs.location(), cs))
             .collect();
 

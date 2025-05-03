@@ -6,8 +6,7 @@ use rust_sc2::{
 };
 
 use crate::{
-    siting::{BuildingStatus, BuildingTransition},
-    Assigns, Tag,
+    siting::{BuildingStatus, BuildingTransition}, Tag,
 };
 
 pub struct UnitEmploymentError(pub String);
@@ -63,10 +62,10 @@ pub struct AssignmentError {
 }
 
 impl AssignmentError {
-    pub fn new(assignee: Tag, manager: String, reason: AssignmentIssue) -> Self {
+    pub const fn new(assignee: Tag, manager: String, reason: AssignmentIssue) -> Self {
         Self {
             assignee,
-            manager: manager.to_string(),
+            manager,
             reason,
         }
     }

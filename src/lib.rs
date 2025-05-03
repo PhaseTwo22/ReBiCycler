@@ -248,7 +248,7 @@ pub fn closeratest(anchor: Point2, p1: Point2, p2: Point2) -> std::cmp::Ordering
     d2p1.total_cmp(&d2p2)
 }
 
-pub fn is_mostly_static_defense(unit: UnitTypeId) -> bool {
+#[must_use] pub const fn is_mostly_static_defense(unit: UnitTypeId) -> bool {
     matches!(
         unit,
         UnitTypeId::SiegeTankSieged

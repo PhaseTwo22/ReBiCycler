@@ -33,7 +33,7 @@ pub struct ConstructionProject {
 }
 
 impl ConstructionProject {
-    pub fn new(building: UnitTypeId, site: ConstructionSite) -> Self {
+    pub const fn new(building: UnitTypeId, site: ConstructionSite) -> Self {
         Self {
             building,
             site,
