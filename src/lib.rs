@@ -6,6 +6,7 @@ use std::{
     hash::Hash,
 };
 mod army;
+mod assignment_manager;
 mod base_manager;
 mod build_order_definitions;
 mod build_order_manager;
