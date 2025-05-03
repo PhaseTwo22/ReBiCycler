@@ -686,7 +686,7 @@ impl SitingDirector {
                 ))
             })
     }
-    pub fn check_morph_gateways(&mut self, warpgates: Units) -> Vec<BuildingTransitionError> {
+    pub fn check_morph_gateways(&mut self, warpgates: Vec<u64>) -> Vec<BuildingTransitionError> {
         let gateways = self.sites.values_mut().filter_map(|bl| match bl.status {
             BuildingStatus::Built(
                 Tag {
@@ -698,7 +698,7 @@ impl SitingDirector {
             _ => None,
         });
         let changed: Vec<BuildingTransitionError> = gateways
-            .filter(|(_, gw)| warpgates.contains_tag(*gw))
+            .filter(|(_, gw)| warpgates.contains(gw))
             .map(|(bl, _)| bl.transition(BuildingTransition::Morph(UnitTypeId::WarpGate)))
             .filter_map(std::result::Result::err)
             .collect();
