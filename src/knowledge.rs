@@ -65,7 +65,7 @@ impl crate::protoss_bot::ReBiCycler {
                 .structures
                 .iter()
                 .of_type(UnitTypeId::WarpGate)
-                .map(|u| u.tag())
+                .map(rust_sc2::prelude::Unit::tag)
                 .collect();
             self.siting_director.check_morph_gateways(warpgates);
         }

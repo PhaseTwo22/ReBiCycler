@@ -279,7 +279,7 @@ impl ReBiCycler {
     pub fn process_construction_projects(&mut self) {
         let needs = self.check_construction_projects();
 
-        for (location, need) in needs.iter() {
+        for (location, need) in &needs {
             let problem = match need {
                 ProjectNeeds::Cancelling | ProjectNeeds::Nothing => Ok(()),
                 ProjectNeeds::Cleaners => {
@@ -315,9 +315,8 @@ impl ReBiCycler {
             };
             problem.map_err(|issue| {
                 self.log_error(format!(
-                    "Can't address {:?} at construction at {:?}: {:?}",
-                    need, location, issue
-                ))
+                    "Can't address {need:?} at construction at {location:?}: {issue:?}"
+                ));
             });
         }
     }
@@ -349,7 +348,7 @@ impl ReBiCycler {
             return ProjectNeeds::Cancelling;
         }
 
-        return ProjectNeeds::Nothing;
+        ProjectNeeds::Nothing
     }
 
     fn rally_builder(&self, location: Point2) -> Result<u64, AssignmentIssue> {
@@ -359,7 +358,7 @@ impl ReBiCycler {
         let closest_miner = self
             .mining_manager
             .employed_miners()
-            .flat_map(|tag| self.units.my.workers.get(*tag))
+            .filter_map(|tag| self.units.my.workers.get(*tag))
             .min_by(|worker_a, worker_b| {
                 distance_from_project(worker_a).total_cmp(&distance_from_project(worker_b))
             });
@@ -386,7 +385,7 @@ impl ReBiCycler {
         if self.can_afford(project.building, false) {
             match project.site.location {
                 LocationType::AtPoint(point, _size) => {
-                    builder.build(project.building, point, false)
+                    builder.build(project.building, point, false);
                 }
                 LocationType::OnGeyser(geyser, _point) => builder.build_gas(geyser, false),
             };

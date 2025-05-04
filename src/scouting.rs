@@ -9,7 +9,8 @@ impl ReBiCycler {
             .iter()
             .filter_map(|expo| {
                 if !self.is_visible(expo.loc) {
-                    Some(unit.move_to(Target::Pos(expo.loc), true))
+                    unit.move_to(Target::Pos(expo.loc), true);
+                    Some(())
                 } else {
                     None
                 }

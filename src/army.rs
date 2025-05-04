@@ -30,11 +30,11 @@ impl ReBiCycler {
             match command {
                 Ok((tag, ability, target, queue)) => {
                     if let Some(u) = self.units.my.units.get(tag) {
-                        u.command(ability, target, queue)
+                        u.command(ability, target, queue);
                     }
                 }
                 Err(issue) => {
-                    self.log_error(format!("Army issue:{:?}", issue));
+                    self.log_error(format!("Army issue:{issue:?}"));
                 }
             }
         }
@@ -120,7 +120,7 @@ struct Mission {
 }
 
 impl Mission {
-    fn new(id: usize, mission_type: MissionType, rally: Point2) -> Self {
+    const fn new(id: usize, mission_type: MissionType, rally: Point2) -> Self {
         Self {
             id,
             mission_type,
@@ -129,7 +129,7 @@ impl Mission {
         }
     }
 
-    fn command(&self, unit: &UnitState) -> Command {
+    const fn command(&self, unit: &UnitState) -> Command {
         match self.mission_type {
             MissionType::BabysitConstruction(point) => (
                 unit.tag,
@@ -163,7 +163,7 @@ impl Mission {
         }
     }
 
-    fn needs(&self, unit: &UnitState) -> bool {
+    const fn needs(&self, unit: &UnitState) -> bool {
         let needs_detector = matches!(self.mission_type, MissionType::DetectArea(_));
 
         match (needs_detector, unit.is_detector) {
