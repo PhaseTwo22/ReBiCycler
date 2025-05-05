@@ -7,44 +7,48 @@ use std::{
 /// I want a generic thing that I can use to manage my assignments and units.
 /// It needs to:
 /// - CRUD assignments and roles
-pub struct AssignmentManager<A, R, I>
+pub struct AssignmentManager<A, R, I, J>
 where
     A: Identity<I>,
-    R: Identity<I> + Clone + Hash + Eq,
+    R: Identity<J> + Clone + Hash + Eq,
     I: Hash + Eq + Copy,
+    J: Hash + Eq + Clone,
 {
     assignees: HashMap<I, A>,
-    roles: HashMap<I, R>,
-    assignments: HashMap<I, RoleAssignment<I>>,
+    roles: HashMap<J, R>,
+    assignments: HashMap<I, RoleAssignment<I, J>>,
 }
 
 #[derive(Clone)]
-pub struct RoleAssignment<I>
+pub struct RoleAssignment<I, J>
 where
     I: Hash + Eq + Copy,
+    J: Hash + Eq + Clone,
 {
     assignee: I,
-    assigned_role: I,
+    assigned_role: J,
 }
 
-impl<I> RoleAssignment<I>
+impl<I, J> RoleAssignment<I, J>
 where
     I: Hash + Eq + Copy,
+    J: Hash + Eq + Clone,
 {
     const fn assignee(&self) -> I {
         self.assignee
     }
-    const fn assigned_role(&self) -> I {
-        self.assigned_role
+    fn assigned_role(&self) -> J {
+        self.assigned_role.clone()
     }
 }
 
-impl<A, R, I> Default for AssignmentManager<A, R, I>
+impl<A, R, I, J> Default for AssignmentManager<A, R, I, J>
 where
     A: Identity<I>,
-    R: Identity<I> + Clone + Hash + Eq,
+    R: Identity<J> + Clone + Hash + Eq,
 
     I: Hash + Eq + Copy,
+    J: Hash + Eq + Clone,
 {
     fn default() -> Self {
         Self {
@@ -54,13 +58,14 @@ where
         }
     }
 }
-impl<A, R, I> Assigns<A, R, I> for AssignmentManager<A, R, I>
+impl<A, R, I, J> Assigns<A, R, I, J> for AssignmentManager<A, R, I, J>
 where
     A: Identity<I>,
-    R: Identity<I> + Clone + Hash + Eq,
+    R: Identity<J> + Clone + Hash + Eq,
     I: Hash + Eq + Copy,
+    J: Hash + Eq + Clone,
 {
-    fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I>> {
+    fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I, J>> {
         let role = self
             .roles
             .get(&role.id())
@@ -78,13 +83,16 @@ where
         }
     }
 
-    fn unassign(&mut self, assignee_id: I) -> Result<RoleAssignment<I>, AssignmentError<A, R, I>> {
+    fn unassign(
+        &mut self,
+        assignee_id: I,
+    ) -> Result<RoleAssignment<I, J>, AssignmentError<A, R, I, J>> {
         self.assignments
             .remove(&assignee_id)
-            .ok_or(AssignmentError::<A, R, I>::NotAssignedHere(assignee_id))
+            .ok_or(AssignmentError::<A, R, I, J>::NotAssignedHere(assignee_id))
     }
 
-    fn add_role(&mut self, role: R) -> Result<(), AssignmentError<A, R, I>> {
+    fn add_role(&mut self, role: R) -> Result<(), AssignmentError<A, R, I, J>> {
         if self.roles.contains_key(&role.id()) {
             return Err(AssignmentError::RoleAlreadyExists(role));
         }
@@ -92,7 +100,7 @@ where
         Ok(())
     }
 
-    fn remove_role(&mut self, role_id: I) -> Result<Vec<I>, AssignmentError<A, R, I>> {
+    fn remove_role(&mut self, role_id: J) -> Result<Vec<I>, AssignmentError<A, R, I, J>> {
         let role = self
             .roles
             .remove(&role_id)
@@ -154,16 +162,20 @@ where
     }
 }
 
-pub trait Assigns<A, R, I>
+pub trait Assigns<A, R, I, J>
 where
     A: Identity<I>,
-    R: Identity<I>,
+    R: Identity<J>,
     I: Eq + Hash + Copy,
+    J: Hash + Eq + Clone,
 {
-    fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I>>;
-    fn unassign(&mut self, assignee_id: I) -> Result<RoleAssignment<I>, AssignmentError<A, R, I>>;
-    fn add_role(&mut self, role: R) -> Result<(), AssignmentError<A, R, I>>;
-    fn remove_role(&mut self, role_id: I) -> Result<Vec<I>, AssignmentError<A, R, I>>;
+    fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I, J>>;
+    fn unassign(
+        &mut self,
+        assignee_id: I,
+    ) -> Result<RoleAssignment<I, J>, AssignmentError<A, R, I, J>>;
+    fn add_role(&mut self, role: R) -> Result<(), AssignmentError<A, R, I, J>>;
+    fn remove_role(&mut self, role_id: J) -> Result<Vec<I>, AssignmentError<A, R, I, J>>;
     fn count_assignments(&self) -> HashMap<&R, usize>;
     fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a R)>
     where
@@ -173,28 +185,30 @@ where
 
 pub trait Identity<I>
 where
-    I: Eq + Hash + Copy,
+    I: Eq + Hash + Clone,
 {
     fn id(&self) -> I;
 }
 
-pub trait Commands<C, A, R, I>
+pub trait Commands<C, A, R, I, J>
 where
-    C: Assigns<A, R, I>,
+    C: Assigns<A, R, I, J>,
     A: Identity<I>,
-    R: Identity<I> + Clone,
+    R: Identity<J> + Clone,
     I: Eq + Hash + Copy,
+    J: Hash + Eq + Clone,
 {
-    fn update_assignments(&mut self) -> Result<(), AssignmentError<A, R, I>>;
+    fn update_assignments(&mut self) -> Result<(), AssignmentError<A, R, I, J>>;
     fn issue_commands(&self) -> Vec<(A, C)>;
 }
 
-pub enum AssignmentError<A, R, I>
+pub enum AssignmentError<A, R, I, J>
 where
     I: Eq + Hash + Copy,
+    J: Hash + Eq + Clone,
 {
-    AlreadyAssigned(A, RoleAssignment<I>),
+    AlreadyAssigned(A, RoleAssignment<I, J>),
     NotAssignedHere(I),
     RoleAlreadyExists(R),
-    RoleDoesntExist(I),
+    RoleDoesntExist(J),
 }
