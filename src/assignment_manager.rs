@@ -83,6 +83,25 @@ where
         }
     }
 
+    fn get_assignee(&self, assignee_id: I) -> Result<&A, AssignmentError<A, R, I, J>> {
+        self.assignees
+            .get(&assignee_id)
+            .ok_or(AssignmentError::NotAssignedHere(assignee_id))
+    }
+
+    fn update_assignee(
+        &mut self,
+        assignee_id: I,
+        updated_assignee: A,
+    ) -> Result<(), AssignmentError<A, R, I, J>> {
+        if !self.assignees.contains_key(&assignee_id) {
+            Err(AssignmentError::NotAssignedHere(assignee_id))
+        } else {
+            self.assignees.insert(assignee_id, updated_assignee);
+            Ok(())
+        }
+    }
+
     fn unassign(
         &mut self,
         assignee_id: I,
@@ -97,6 +116,40 @@ where
             return Err(AssignmentError::RoleAlreadyExists(role));
         }
         self.roles.insert(role.id(), role);
+        Ok(())
+    }
+
+    fn get_assignment(&self, assignee_id: I) -> Result<&R, AssignmentError<A, R, I, J>> {
+        let assignment = self
+            .assignments
+            .get(&assignee_id)
+            .ok_or(AssignmentError::NotAssignedHere(assignee_id))?;
+        self.roles
+            .get(&assignment.assigned_role)
+            .ok_or(AssignmentError::RoleDoesntExist(
+                assignment.assigned_role.clone(),
+            ))
+    }
+
+    fn change_assignment(
+        &mut self,
+        assignee_id: I,
+        new_role: R,
+    ) -> Result<(), AssignmentError<A, R, I, J>> {
+        let new_assignment = RoleAssignment {
+            assignee: assignee_id,
+            assigned_role: new_role.id(),
+        };
+
+        self.assignments
+            .remove(&assignee_id)
+            .ok_or(AssignmentError::NotAssignedHere(assignee_id))?;
+
+        if !self.roles.contains_key(&new_role.id()) {
+            return Err(AssignmentError::RoleDoesntExist(new_role.id()));
+        }
+
+        self.assignments.insert(assignee_id, new_assignment);
         Ok(())
     }
 
@@ -170,11 +223,24 @@ where
     J: Hash + Eq + Clone,
 {
     fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I, J>>;
+    fn get_assignee(&self, assignee_id: I) -> Result<&A, AssignmentError<A, R, I, J>>;
+    fn update_assignee(
+        &mut self,
+        assignee_id: I,
+        updated_assignee: A,
+    ) -> Result<(), AssignmentError<A, R, I, J>>;
     fn unassign(
         &mut self,
         assignee_id: I,
     ) -> Result<RoleAssignment<I, J>, AssignmentError<A, R, I, J>>;
+
     fn add_role(&mut self, role: R) -> Result<(), AssignmentError<A, R, I, J>>;
+    fn get_assignment(&self, assignee_id: I) -> Result<&R, AssignmentError<A, R, I, J>>;
+    fn change_assignment(
+        &mut self,
+        assignee_id: I,
+        new_role: R,
+    ) -> Result<(), AssignmentError<A, R, I, J>>;
     fn remove_role(&mut self, role_id: J) -> Result<Vec<I>, AssignmentError<A, R, I, J>>;
     fn count_assignments(&self) -> HashMap<&R, usize>;
     fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a R)>
@@ -190,15 +256,12 @@ where
     fn id(&self) -> I;
 }
 
-pub trait Commands<C, A, R, I, J>
+pub trait Commands<C, A, I, D>
 where
-    C: Assigns<A, R, I, J>,
     A: Identity<I>,
-    R: Identity<J> + Clone,
     I: Eq + Hash + Copy,
-    J: Hash + Eq + Clone,
 {
-    fn update_assignments(&mut self) -> Result<(), AssignmentError<A, R, I, J>>;
+    fn update_peon_states(&mut self, data: D) -> Result<(), CommandError>;
     fn issue_commands(&self) -> Vec<(A, C)>;
 }
 
@@ -212,3 +275,5 @@ where
     RoleAlreadyExists(R),
     RoleDoesntExist(J),
 }
+
+pub enum CommandError {}
