@@ -267,10 +267,12 @@ impl ReBiCycler {
         self.micro_single_manager(&self.mining_manager);
     }
 
-    fn micro_single_manager(
+    fn micro_single_manager<A>(
         &self,
-        manager: &impl Commands<(AbilityId, Target, bool), impl Identity<u64>, u64, Units>,
-    ) {
+        manager: &impl Commands<(AbilityId, Target, bool), A, u64, Units>,
+    ) where
+        A: Identity<u64>,
+    {
         for (tag, (ability, target, queue)) in manager.issue_commands() {
             if let Some(unit) = self.units.my.workers.get(tag) {
                 unit.command(ability, target, queue);
