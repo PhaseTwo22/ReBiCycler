@@ -162,28 +162,36 @@ impl MinerController {
         }
     }
 
-    pub fn remove_resource(&mut self, resource_tag: u64) {
+    pub fn remove_resource(&mut self, resource_tag: u64) -> Vec<u64> {
         let destroyed_roles: Vec<JobId> = self
             .mining_manager
-            .get_role_ids()
-            .filter(|j| j.resource_tag == resource_tag)
-            .cloned()
+            .iter_roles()
+            .filter(|j| j.tag == resource_tag)
+            .map(super::assignment_manager::Identity::id)
             .collect();
+        let mut newly_unemployed = Vec::new();
         for role_id in destroyed_roles {
-            self.mining_manager.remove_role(role_id);
+            if let Ok(unemployed) = self.mining_manager.remove_role(role_id) {
+                newly_unemployed.extend(unemployed);
+            }
         }
+        newly_unemployed
     }
 
-    pub fn remove_townhall(&mut self, townhall_tag: u64) {
+    pub fn remove_townhall(&mut self, townhall_tag: u64) -> Vec<u64> {
         let destroyed_roles: Vec<JobId> = self
             .mining_manager
             .get_role_ids()
             .filter(|j| j.townhall_tag == townhall_tag)
             .cloned()
             .collect();
+        let mut newly_unemployed = Vec::new();
         for role_id in destroyed_roles {
-            self.mining_manager.remove_role(role_id);
+            if let Ok(unemployed) = self.mining_manager.remove_role(role_id) {
+                newly_unemployed.extend(unemployed);
+            }
         }
+        newly_unemployed
     }
 }
 
@@ -192,7 +200,7 @@ type MiningCommand = (AbilityId, Target, bool);
 impl Commands<MiningCommand, Miner, u64, Units> for MinerController {
     fn issue_commands(&self) -> Vec<(u64, MiningCommand)> {
         self.mining_manager
-            .iter()
+            .iter_assignments()
             .map(|(a, r)| (a.id(), worker_micro(a, r)))
             .collect()
     }

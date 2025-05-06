@@ -199,7 +199,7 @@ where
         counts
     }
 
-    fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a R)>
+    fn iter_assignments<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a R)>
     where
         A: 'a,
         R: 'a,
@@ -221,6 +221,20 @@ where
         J: 'a,
     {
         self.roles.keys()
+    }
+
+    fn iter_assignees<'a>(&'a self) -> impl Iterator<Item = &'a A>
+    where
+        A: 'a,
+    {
+        self.assignees.values()
+    }
+
+    fn iter_roles<'a>(&'a self) -> impl Iterator<Item = &'a R>
+    where
+        R: 'a,
+    {
+        self.roles.values()
     }
 }
 
@@ -255,9 +269,15 @@ where
     ) -> Result<(), AssignmentError<A, R, I, J>>;
     fn remove_role(&mut self, role_id: J) -> Result<Vec<I>, AssignmentError<A, R, I, J>>;
     fn count_assignments(&self) -> HashMap<&R, usize>;
-    fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a R)>
+    fn iter_assignments<'a>(&'a self) -> impl Iterator<Item = (&'a A, &'a R)>
     where
         A: 'a,
+        R: 'a;
+    fn iter_assignees<'a>(&'a self) -> impl Iterator<Item = &'a A>
+    where
+        A: 'a;
+    fn iter_roles<'a>(&'a self) -> impl Iterator<Item = &'a R>
+    where
         R: 'a;
 }
 
