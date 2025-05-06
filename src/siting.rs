@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     errors::{BuildError, BuildingTransitionError, UnitEmploymentError},
-    micro::MiningError,
+    mining::Miner,
     protoss_bot::ReBiCycler,
     Tag, PRISM_POWER_RADIUS, PYLON_POWER_RADIUS,
 };
@@ -744,7 +744,7 @@ impl ReBiCycler {
             .clone();
 
         let builder_tag = builder.tag();
-        let builder_conscripted = self.mining_manager.remove_miner(builder_tag);
+        let builder_conscripted = self.mining_manager.remove_worker(builder_tag);
 
         builder.build(structure_type, position.location(), false);
         if builder_conscripted {
@@ -864,27 +864,37 @@ impl ReBiCycler {
 
     /// Assigns a worker an available resource.
     pub fn back_to_work(&mut self, worker: u64) {
-        if let Err(e) = self.mining_manager.assign_miner(worker) {
-            self.log_error(format!(
-                "Can't employ worker: {:?}| {:?}",
-                e,
-                self.mining_manager.saturation()
-            ));
+        if let Some(worker) = self.units.my.workers.get(worker) {
+            if let Err(e) = self.mining_manager.add_worker(Miner::new(worker)) {
+                self.log_error(format!(
+                    "Can't employ worker: {:?}| {:?}",
+                    e,
+                    self.mining_manager.saturation()
+                ));
+            }
         }
     }
 
     /// When a new base finishes, we want to make a new Base Manager for it.
     /// Add the resources and existing buildings, if any.
     /// # Errors
-    /// `BuildError::NoBuildingLocationHere` if the base isn't on an expansion location
-    pub fn new_base_finished(&mut self, nexus: &Unit) -> Result<(), BuildError> {
-        self.mining_manager.add_townhall(nexus).map_err(|e| {
-            if let MiningError::NotTownhall(tag) = e {
-                BuildError::InvalidUnit(format!("{tag:?} is not a townhall"))
-            } else {
-                BuildError::InvalidUnit(format!("new error from finising a base: {e:?}"))
-            }
-        })
+
+    pub fn new_base_finished(&mut self, nexus: &Unit) {
+        if let Some(expansion) = self.expansions.iter().find(|e| e.loc == nexus.position()) {
+            let mut minerals = self
+                .units
+                .mineral_fields
+                .find_tags(expansion.minerals.iter());
+            let assimilators = self
+                .units
+                .my
+                .structures
+                .closer(7.0, nexus)
+                .filter(|s| s.vespene_contents().is_some());
+
+            minerals.extend(assimilators);
+            self.mining_manager.add_townhall(nexus, &minerals)
+        }
     }
     /// Finds a gas to take at the specified base and builds it
     /// # Errors

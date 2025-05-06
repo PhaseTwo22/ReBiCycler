@@ -12,6 +12,7 @@ const MINERAL_MINE_DISTANCE: f32 = 1.0;
 const GAS_MINE_DISTANCE: f32 = 2.5;
 const RETURN_CARGO_DISTANCE: f32 = 2.9;
 
+#[derive(Default)]
 pub struct MinerController {
     pub mining_manager: AssignmentManager<Miner, ResourcePairing, u64, JobId>,
 }
@@ -124,8 +125,7 @@ impl Identity<u64> for Miner {
 }
 
 impl MinerController {
-    pub fn add_worker(&mut self, unit: &Unit) -> Result<(), u8> {
-        let new_miner = Miner::new(unit);
+    pub fn add_worker(&mut self, new_miner: Miner) -> Result<(), u8> {
         let new_job = self
             .mining_manager
             .count_assignments()
@@ -204,7 +204,7 @@ impl Commands<MiningCommand, Miner, u64, Units> for MinerController {
             .map(|(a, r)| (a.id(), worker_micro(a, r)))
             .collect()
     }
-    fn get_peon_updates(&mut self, data: &Units) -> Vec<Miner> {
+    fn get_peon_updates(&mut self, data: Units) -> Vec<Miner> {
         data.iter()
             .filter_map(|unit| {
                 if let (Ok(last_observation), Ok(last_assignment)) = (

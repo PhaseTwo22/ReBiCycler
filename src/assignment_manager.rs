@@ -7,6 +7,7 @@ use std::{
 /// I want a generic thing that I can use to manage my assignments and units.
 /// It needs to:
 /// - CRUD assignments and roles
+
 pub struct AssignmentManager<A, R, I, J>
 where
     A: Identity<I>,
@@ -293,7 +294,7 @@ where
     A: Identity<I>,
     I: Eq + Hash + Copy,
 {
-    fn get_peon_updates(&mut self, data: &D) -> Vec<A>;
+    fn get_peon_updates(&mut self, data: D) -> Vec<A>;
     fn apply_peon_updates(&mut self, updates: Vec<A>);
     fn issue_commands(&self) -> Vec<(I, C)>;
 }

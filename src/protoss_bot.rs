@@ -1,11 +1,12 @@
 use crate::army::ArmyController;
+use crate::assignment_manager::{Commands, Identity};
 use crate::build_order_definitions::nexus_first_two_base_charge;
 use crate::build_tree::BuildOrderTree;
 use crate::chatter::{ChatAction, ChatController};
 use crate::construction::ConstructionManager;
 use crate::errors::BuildError;
 use crate::knowledge::Knowledge;
-use crate::micro::MinerManager;
+use crate::mining::MinerController;
 use crate::readout::DisplayTerminal;
 use crate::siting::SitingDirector;
 use crate::Tag;
@@ -26,7 +27,7 @@ pub struct ReBiCycler {
     /// controls the army and assignments and stuff
     pub army_manager: ArmyController,
     /// manages workers and executes speed mining
-    pub mining_manager: MinerManager,
+    pub mining_manager: MinerController,
     /// Manages construction projects
     pub construction_manager: ConstructionManager,
     /// Does chat stuff.
@@ -86,9 +87,14 @@ impl Player for ReBiCycler {
             //self.map_worker_activity(frame_no);
         }
 
-        let miner_tags = self.mining_manager.employed_miners();
-        let workers = self.units.my.workers.find_tags(miner_tags);
-        self.mining_manager.micro(&workers);
+        self.update_managers();
+        self.micro_managers();
+
+        let updates = self
+            .mining_manager
+            .get_peon_updates(self.units.my.workers.clone());
+        self.mining_manager.apply_peon_updates(updates);
+
         if frame_no % 250 == 0 {
             self.monitor(frame_no);
         };
@@ -246,5 +252,35 @@ pub enum BotState {
 impl Default for BotState {
     fn default() -> Self {
         Self::Nominal
+    }
+}
+
+impl ReBiCycler {
+    fn update_managers(&mut self) {
+        let updates = self
+            .mining_manager
+            .get_peon_updates(self.units.my.workers.clone());
+        self.mining_manager.apply_peon_updates(updates);
+    }
+
+    fn micro_managers(&self) {
+        self.micro_single_manager(&self.mining_manager);
+    }
+
+    fn micro_single_manager(
+        &self,
+        manager: &impl Commands<(AbilityId, Target, bool), impl Identity<u64>, u64, Units>,
+    ) {
+        for (tag, (ability, target, queue)) in manager.issue_commands() {
+            if let Some(unit) = self.units.my.workers.get(tag) {
+                unit.command(ability, target, queue);
+            }
+        }
+    }
+}
+
+impl Identity<u64> for Unit {
+    fn id(&self) -> u64 {
+        self.tag()
     }
 }
