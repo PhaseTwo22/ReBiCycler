@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use rust_sc2::{
     action::Target,
     ids::AbilityId,
@@ -8,20 +6,40 @@ use rust_sc2::{
     units::Units,
 };
 
-use crate::assignment_manager::{AssignmentManager, Assigns, CommandError, Commands, Identity};
+use crate::assignment_manager::{AssignmentManager, Assigns, Commands, Identity};
 
 const MINERAL_MINE_DISTANCE: f32 = 1.0;
 const GAS_MINE_DISTANCE: f32 = 2.5;
 const RETURN_CARGO_DISTANCE: f32 = 2.9;
 
-pub struct MinerManager {
-    priority: MinerAsset,
-    assignment_manager: AssignmentManager<Miner, ResourcePairing, u64, JobId>,
+pub struct MinerController {
+    pub mining_manager: AssignmentManager<Miner, ResourcePairing, u64, JobId>,
 }
 
-struct Miner {
+pub struct Miner {
     worker_tag: u64,
     state: MinerMicroState,
+    holding_resource: bool,
+    position: Point2,
+}
+impl Miner {
+    fn update(unit: &Unit, last_state: MinerMicroState) -> Self {
+        Self {
+            worker_tag: unit.tag(),
+            state: last_state,
+            holding_resource: unit.is_carrying_resource(),
+            position: unit.position(),
+        }
+    }
+
+    pub fn new(unit: &Unit) -> Self {
+        Self {
+            worker_tag: unit.tag(),
+            state: MinerMicroState::Idle,
+            holding_resource: unit.is_carrying_resource(),
+            position: unit.position(),
+        }
+    }
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -33,11 +51,12 @@ pub struct ResourcePairing {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone)]
-struct JobId {
-    resource_loc: Point2,
-    townhall_loc: Point2,
+pub struct JobId {
+    resource_tag: u64,
+    townhall_tag: u64,
 }
 
+#[derive(Clone)]
 enum MinerMicroState {
     Idle,
     Gather,
@@ -59,7 +78,7 @@ pub struct MinerAsset {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub enum AssetType {
+enum AssetType {
     Minerals,
     Gas,
 }
@@ -67,12 +86,34 @@ impl ResourcePairing {
     fn is_mineral(&self) -> bool {
         self.resource.asset_type == AssetType::Minerals
     }
+    fn is_gas(&self) -> bool {
+        self.resource.asset_type == AssetType::Gas
+    }
+
+    fn new(resource: &Unit, nearest_townhall: &Unit) -> Self {
+        Self {
+            resource: MinerAsset {
+                location: resource.position(),
+                asset_type: if resource.is_mineral() {
+                    AssetType::Minerals
+                } else {
+                    AssetType::Gas
+                },
+            },
+            townhall: Townhall {
+                tag: nearest_townhall.tag(),
+                location: nearest_townhall.position(),
+            },
+            location: resource.position(),
+            tag: resource.tag(),
+        }
+    }
 }
 impl Identity<JobId> for ResourcePairing {
     fn id(&self) -> JobId {
         JobId {
-            resource_loc: self.resource.location,
-            townhall_loc: self.townhall.location,
+            resource_tag: self.tag,
+            townhall_tag: self.townhall.tag,
         }
     }
 }
@@ -82,45 +123,130 @@ impl Identity<u64> for Miner {
     }
 }
 
-impl MinerManager {}
+impl MinerController {
+    pub fn add_worker(&mut self, unit: &Unit) -> Result<(), u8> {
+        let new_miner = Miner::new(unit);
+        let new_job = self
+            .mining_manager
+            .count_assignments()
+            .into_iter()
+            .find_map(|(pairing, count)| {
+                if (pairing.is_mineral() && count < 2) || (pairing.is_gas() && count < 3) {
+                    Some(pairing)
+                } else {
+                    None
+                }
+            })
+            .ok_or(2)?;
 
-type MiningCommand = (AbilityId, Target, bool);
+        let _ = self.mining_manager.assign(new_miner, &new_job.clone());
+        Ok(())
+    }
 
-impl Commands<MiningCommand, Miner, u64, Units> for MinerManager {
-    fn issue_commands(&self) -> Vec<(Miner, MiningCommand)> {}
-    fn update_peon_states(&mut self, data: Units) -> Result<(), CommandError> {}
-}
+    pub fn remove_worker(&mut self, worker_tag: u64) {
+        self.mining_manager.unassign(worker_tag);
+    }
 
-fn worker_micro(unit: &Unit, state: &MinerMicroState, assignment: ResourcePairing) {
-    match state {
-        MinerMicroState::Gather => unit.gather(assignment.tag, false),
+    pub fn add_resource(&mut self, resource: &Unit, nearest_townhall: &Unit) {
+        let new_resource = ResourcePairing::new(resource, nearest_townhall);
+        self.mining_manager.add_role(new_resource);
+    }
 
-        MinerMicroState::ReturnCargo => unit.return_resource(false),
-        MinerMicroState::GatherMove(point) | MinerMicroState::ReturnMove(point) => {
-            unit.move_to(Target::Pos(*point), false);
+    pub fn add_townhall(&mut self, townhall: &Unit, nearby_resources: &Units) {
+        let new_roles: Vec<ResourcePairing> = nearby_resources
+            .iter()
+            .map(|resource| ResourcePairing::new(resource, townhall))
+            .collect();
+        for role in new_roles {
+            self.mining_manager.add_role(role);
         }
-        MinerMicroState::Idle => unit.stop(false),
+    }
+
+    pub fn remove_resource(&mut self, resource_tag: u64) {
+        let destroyed_roles: Vec<JobId> = self
+            .mining_manager
+            .get_role_ids()
+            .filter(|j| j.resource_tag == resource_tag)
+            .cloned()
+            .collect();
+        for role_id in destroyed_roles {
+            self.mining_manager.remove_role(role_id);
+        }
+    }
+
+    pub fn remove_townhall(&mut self, townhall_tag: u64) {
+        let destroyed_roles: Vec<JobId> = self
+            .mining_manager
+            .get_role_ids()
+            .filter(|j| j.townhall_tag == townhall_tag)
+            .cloned()
+            .collect();
+        for role_id in destroyed_roles {
+            self.mining_manager.remove_role(role_id);
+        }
     }
 }
 
+type MiningCommand = (AbilityId, Target, bool);
+
+impl Commands<MiningCommand, Miner, u64, Units> for MinerController {
+    fn issue_commands(&self) -> Vec<(u64, MiningCommand)> {
+        self.mining_manager
+            .iter()
+            .map(|(a, r)| (a.id(), worker_micro(a, r)))
+            .collect()
+    }
+    fn get_peon_updates(&mut self, data: &Units) -> Vec<Miner> {
+        data.iter()
+            .filter_map(|unit| {
+                if let (Ok(last_observation), Ok(last_assignment)) = (
+                    self.mining_manager.get_assignee(unit.tag()),
+                    self.mining_manager.get_assignment(unit.tag()),
+                ) {
+                    let this_observation = Miner::update(unit, last_observation.state.clone());
+                    let new_state = worker_update(&this_observation, last_assignment);
+                    Some(Miner::update(unit, new_state))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn apply_peon_updates(&mut self, updates: Vec<Miner>) {
+        for up in updates {
+            let _ = self.mining_manager.update_assignee(up.id(), up);
+        }
+    }
+}
+
+const fn worker_micro(unit: &Miner, assignment: &ResourcePairing) -> MiningCommand {
+    let (ability, target) = match unit.state {
+        MinerMicroState::Gather => (AbilityId::Smart, Target::Tag(assignment.tag)),
+
+        MinerMicroState::ReturnCargo => (AbilityId::HarvestReturn, Target::None),
+        MinerMicroState::GatherMove(point) | MinerMicroState::ReturnMove(point) => {
+            (AbilityId::Move, Target::Pos(point))
+        }
+        MinerMicroState::Idle => (AbilityId::Stop, Target::None),
+    };
+    (ability, target, false)
+}
+
 #[allow(clippy::match_same_arms)]
-fn worker_update(
-    unit: &Unit,
-    state: MinerMicroState,
-    assignment: ResourcePairing,
-) -> MinerMicroState {
-    match (unit.is_carrying_resource(), state) {
+fn worker_update(unit: &Miner, assignment: &ResourcePairing) -> MinerMicroState {
+    match (&unit.holding_resource, &unit.state) {
         (true, MinerMicroState::ReturnMove(point)) => {
-            if unit.position().distance(point) < RETURN_CARGO_DISTANCE {
+            if unit.position.distance(point) < RETURN_CARGO_DISTANCE {
                 MinerMicroState::ReturnCargo
             } else {
-                MinerMicroState::ReturnMove(point)
+                MinerMicroState::ReturnMove(*point)
             }
         }
         (true, MinerMicroState::ReturnCargo) => MinerMicroState::ReturnCargo,
         (false, MinerMicroState::ReturnCargo) => {
             MinerMicroState::GatherMove(assignment.resource.location.towards(
-                unit.position(),
+                unit.position,
                 if assignment.is_mineral() {
                     MINERAL_MINE_DISTANCE
                 } else {
@@ -129,10 +255,10 @@ fn worker_update(
             ))
         }
         (false, MinerMicroState::GatherMove(point)) => {
-            if unit.position().distance(point) < GAS_MINE_DISTANCE {
+            if unit.position.distance(point) < GAS_MINE_DISTANCE {
                 MinerMicroState::Gather
             } else {
-                MinerMicroState::GatherMove(point)
+                MinerMicroState::GatherMove(*point)
             }
         }
         (false, MinerMicroState::Gather) => MinerMicroState::Gather,
@@ -140,7 +266,7 @@ fn worker_update(
             assignment
                 .townhall
                 .location
-                .towards(unit.position(), RETURN_CARGO_DISTANCE),
+                .towards(unit.position, RETURN_CARGO_DISTANCE),
         ),
         _ => MinerMicroState::ReturnCargo,
     }

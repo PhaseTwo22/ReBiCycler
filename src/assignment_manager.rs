@@ -65,7 +65,7 @@ where
     I: Hash + Eq + Copy,
     J: Hash + Eq + Clone,
 {
-    fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I, J>> {
+    fn assign(&mut self, assignee: A, role: &R) -> Result<(), AssignmentError<A, R, I, J>> {
         let role = self
             .roles
             .get(&role.id())
@@ -94,11 +94,13 @@ where
         assignee_id: I,
         updated_assignee: A,
     ) -> Result<(), AssignmentError<A, R, I, J>> {
-        if !self.assignees.contains_key(&assignee_id) {
-            Err(AssignmentError::NotAssignedHere(assignee_id))
-        } else {
-            self.assignees.insert(assignee_id, updated_assignee);
+        if let std::collections::hash_map::Entry::Occupied(mut e) =
+            self.assignees.entry(assignee_id)
+        {
+            e.insert(updated_assignee);
             Ok(())
+        } else {
+            Err(AssignmentError::NotAssignedHere(assignee_id))
         }
     }
 
@@ -213,6 +215,13 @@ where
             combinator(assignment.assignee(), assignment.assigned_role())
         })
     }
+
+    fn get_role_ids<'a>(&'a self) -> impl Iterator<Item = &'a J>
+    where
+        J: 'a,
+    {
+        self.roles.keys()
+    }
 }
 
 pub trait Assigns<A, R, I, J>
@@ -222,7 +231,7 @@ where
     I: Eq + Hash + Copy,
     J: Hash + Eq + Clone,
 {
-    fn assign(&mut self, assignee: A, role: R) -> Result<(), AssignmentError<A, R, I, J>>;
+    fn assign(&mut self, assignee: A, role: &R) -> Result<(), AssignmentError<A, R, I, J>>;
     fn get_assignee(&self, assignee_id: I) -> Result<&A, AssignmentError<A, R, I, J>>;
     fn update_assignee(
         &mut self,
@@ -236,6 +245,9 @@ where
 
     fn add_role(&mut self, role: R) -> Result<(), AssignmentError<A, R, I, J>>;
     fn get_assignment(&self, assignee_id: I) -> Result<&R, AssignmentError<A, R, I, J>>;
+    fn get_role_ids<'a>(&'a self) -> impl Iterator<Item = &'a J>
+    where
+        J: 'a;
     fn change_assignment(
         &mut self,
         assignee_id: I,
@@ -261,8 +273,9 @@ where
     A: Identity<I>,
     I: Eq + Hash + Copy,
 {
-    fn update_peon_states(&mut self, data: D) -> Result<(), CommandError>;
-    fn issue_commands(&self) -> Vec<(A, C)>;
+    fn get_peon_updates(&mut self, data: &D) -> Vec<A>;
+    fn apply_peon_updates(&mut self, updates: Vec<A>);
+    fn issue_commands(&self) -> Vec<(I, C)>;
 }
 
 pub enum AssignmentError<A, R, I, J>
