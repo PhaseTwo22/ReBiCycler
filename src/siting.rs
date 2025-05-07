@@ -14,7 +14,7 @@ use image::Rgba;
 use itertools::{iproduct, Either};
 use rust_sc2::{action::ActionResult, bot::Expansion, prelude::*};
 
-const ACCEPTABLE_GAS_DISTANCE: f32 = 12.0;
+const NEARBY_RESOURCE_THRESHOLD: f32 = 12.0;
 
 #[allow(dead_code)]
 const EXPANSION_NAMES: [&str; 48] = [
@@ -885,7 +885,7 @@ impl ReBiCycler {
                 .units
                 .my
                 .structures
-                .closer(7.0, nexus)
+                .closer(NEARBY_RESOURCE_THRESHOLD, nexus)
                 .filter(|s| s.vespene_contents().is_some());
 
             resources.extend(assimilators);
@@ -899,7 +899,7 @@ impl ReBiCycler {
     pub fn take_gas(&self, near: Point2) -> Result<(), BuildError> {
         let gas = self
             .siting_director
-            .get_free_geyser(near, ACCEPTABLE_GAS_DISTANCE)
+            .get_free_geyser(near, NEARBY_RESOURCE_THRESHOLD)
             .ok_or(BuildError::NoPlacementLocations)?;
 
         let builder = self

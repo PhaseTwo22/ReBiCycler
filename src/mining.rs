@@ -213,7 +213,9 @@ impl MinerController {
     }
 
     pub fn employed_miners(&self) -> impl Iterator<Item = u64> + use<'_> {
-        self.mining_manager.iter_assignees().map(super::assignment_manager::Identity::id)
+        self.mining_manager
+            .iter_assignees()
+            .map(super::assignment_manager::Identity::id)
     }
 
     pub fn saturation(&self) -> HashMap<&ResourcePairing, usize> {
