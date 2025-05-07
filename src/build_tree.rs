@@ -166,41 +166,6 @@ impl BuildOrderTree {
         visits
     }
 
-    ///returns a vec of indexes of the tree in depth first order
-    pub fn depth_first(&self) -> Vec<(usize, u32)> {
-        let mut visits = Vec::new();
-        let mut stack = Vec::new();
-        stack.extend(self.roots.iter().map(|r| (r, 0u32, "".to_string())));
-
-        while let Some((next, depth, prefix)) = stack.pop() {
-            if let Some(node) = self.get(*next) {
-                let symbol = visits.push((*next, depth));
-                ("  ", "├─", "└─");
-
-                let _: () = node
-                    .children
-                    .iter()
-                    .sorted()
-                    .rev()
-                    .enumerate()
-                    .map(|(i, child)| {
-                        stack.push((
-                            child,
-                            depth + 1,
-                            if i == 0 {
-                                format!("{prefix}  ")
-                            } else {
-                                format!("{prefix}| ")
-                            },
-                        ));
-                    })
-                    .rev()
-                    .collect();
-            }
-        }
-
-        visits
-    }
     ///returns the depth off the given node.
     fn depth_of(&self, index: usize) -> Option<usize> {
         let node = self.get(index)?;
@@ -223,12 +188,41 @@ impl BuildOrderTree {
 
 impl Display for BuildOrderTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let order = self.depth_first();
+        let mut visits = Vec::new();
+        let mut stack = Vec::new();
+        stack.extend(self.roots.iter().map(|r| (r, 0u32, "".to_string())));
 
-        for (id, depth) in order {
-            if let Some(node) = self.get(id) {
-                write!(f, "{out}")?;
+        while let Some((next, depth, prefix)) = stack.pop() {
+            if let Some(node) = self.get(*next) {
+                // we arrive at a node, we write it.
+                if node.value.display {
+                    writeln!(f, "{}{}{}", prefix, node.value.name, node.value.state);
+                }
+
+                let child_count = node.children.len();
+                for child in node.children.iter().enumerate() {}
+                let symbol = visits.push((*next, depth));
                 ("  ", "├─", "└─");
+
+                let _: () = node
+                    .children
+                    .iter()
+                    .sorted()
+                    .rev()
+                    .enumerate()
+                    .map(|(i, child)| {
+                        stack.push((
+                            child,
+                            depth + 1,
+                            if i == 0 {
+                                format!("{prefix}  ")
+                            } else {
+                                format!("{prefix}| ")
+                            },
+                        ));
+                    })
+                    .rev()
+                    .collect();
             }
         }
         write!(f, "")
