@@ -190,39 +190,31 @@ impl Display for BuildOrderTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut visits = Vec::new();
         let mut stack = Vec::new();
-        stack.extend(self.roots.iter().map(|r| (r, 0u32, "".to_string())));
+        stack.extend(self.roots.iter().map(|r| (r, true, "".to_string())));
 
-        while let Some((next, depth, prefix)) = stack.pop() {
+        while let Some((next, was_last, prefix)) = stack.pop() {
             if let Some(node) = self.get(*next) {
                 // we arrive at a node, we write it.
+let this_pointer = if was_last {"└"} else {"├"};
                 if node.value.display {
-                    writeln!(f, "{}{}{}", prefix, node.value.name, node.value.state);
+                    writeln!(f, "{}{}{}{}", prefix, this_pointer, node.value.name, node.value.state);
                 }
 
+let new_prefix = if was_last {
+     format!("{prefix} ")
+       } else {
+     format!("{prefix}|")
                 let child_count = node.children.len();
-                for child in node.children.iter().enumerate() {}
-                let symbol = visits.push((*next, depth));
-                ("  ", "├─", "└─");
+                for (i,child) in node.children.iter().enumerate() {
 
-                let _: () = node
-                    .children
-                    .iter()
-                    .sorted()
-                    .rev()
-                    .enumerate()
-                    .map(|(i, child)| {
-                        stack.push((
-                            child,
-                            depth + 1,
-                            if i == 0 {
-                                format!("{prefix}  ")
-                            } else {
-                                format!("{prefix}| ")
-                            },
-                        ));
-                    })
-                    .rev()
-                    .collect();
+let is_last = i == child_count - 1;
+stack.push((child, is_last, new_prefix));
+
+
+ };
+
+}
+
             }
         }
         write!(f, "")
