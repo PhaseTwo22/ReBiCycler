@@ -865,12 +865,8 @@ impl ReBiCycler {
     /// Assigns a worker an available resource.
     pub fn back_to_work(&mut self, worker: u64) {
         if let Some(worker) = self.units.my.workers.get(worker) {
-            if let Err(e) = self.mining_manager.add_worker(Miner::new(worker)) {
-                self.log_error(format!(
-                    "Can't employ worker: {:?}| {:?}",
-                    e,
-                    self.mining_manager.saturation()
-                ));
+            if let Err(_e) = self.mining_manager.add_worker(Miner::new(worker)) {
+                self.log_error(format!("All jobs filled: {}", self.mining_manager));
             }
         }
     }
@@ -881,7 +877,7 @@ impl ReBiCycler {
 
     pub fn new_base_finished(&mut self, nexus: &Unit) {
         if let Some(expansion) = self.expansions.iter().find(|e| e.loc == nexus.position()) {
-            let mut minerals = self
+            let mut resources = self
                 .units
                 .mineral_fields
                 .find_tags(expansion.minerals.iter());
@@ -892,8 +888,8 @@ impl ReBiCycler {
                 .closer(7.0, nexus)
                 .filter(|s| s.vespene_contents().is_some());
 
-            minerals.extend(assimilators);
-            self.mining_manager.add_townhall(nexus, &minerals)
+            resources.extend(assimilators);
+            self.mining_manager.add_townhall(nexus, &resources);
         }
     }
     /// Finds a gas to take at the specified base and builds it

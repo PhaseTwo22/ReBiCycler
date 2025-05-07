@@ -1,11 +1,6 @@
 use std::{collections::HashMap, fmt::Display};
 
-use rust_sc2::{
-    action::Target,
-    ids::UnitTypeId,
-    prelude::{DistanceIterator, Point2},
-    unit::Unit,
-};
+use rust_sc2::{action::Target, ids::UnitTypeId, prelude::Point2, unit::Unit};
 
 use crate::{
     army::MissionType,
@@ -173,32 +168,15 @@ impl ReBiCycler {
         };
 
         if building.type_id() == UnitTypeId::Nexus {
-            if let Err(e) = self.new_base_finished(&building.clone()) {
-                self.log_error(format!("Can't add nexus to Mining Manager: {e:?}"));
-            }
-            let minerals: Vec<Unit> = self
-                .units
-                .mineral_fields
-                .iter()
-                .closer(10.0, building)
-                .cloned()
-                .collect();
-            let mut issues = Vec::new();
-            for mineral in minerals {
-                if let Err(e) = self.mining_manager.add_resource(&mineral) {
-                    issues.push(format!("Can't add mineral to Mining Manager: {e:?}"));
-                }
-            }
-            for iss in issues {
-                self.log_error(iss);
-            }
+            self.new_base_finished(&building.clone());
         } else if building.type_id() == UnitTypeId::Pylon {
             self.update_building_power(UnitTypeId::Pylon, building.position(), true);
         } else if crate::is_assimilator(building.type_id()) {
             let bc = building.clone();
-            if let Err(e) = self.mining_manager.add_resource(&bc) {
-                println!("Can't mine this: {e:?}");
-            };
+            if let Some(nearest_townhall) = self.units.my.townhalls.closest(&bc) {
+                self.mining_manager
+                    .add_resource(&bc, &nearest_townhall.clone());
+            }
         }
     }
     /// marks a building location as constructing
@@ -358,7 +336,7 @@ impl ReBiCycler {
         let closest_miner = self
             .mining_manager
             .employed_miners()
-            .filter_map(|tag| self.units.my.workers.get(*tag))
+            .filter_map(|tag| self.units.my.workers.get(tag))
             .min_by(|worker_a, worker_b| {
                 distance_from_project(worker_a).total_cmp(&distance_from_project(worker_b))
             });

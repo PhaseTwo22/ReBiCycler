@@ -143,38 +143,32 @@ impl ReBiCycler {
     }
     /// Not everything is ready before the game starts, do stuff that we need everything ready for
     fn first_frame(&mut self) {
-        let nearby_minerals: Vec<Unit> = self
-            .units
-            .resources
-            .iter()
-            .closer(10.0, self.start_center)
-            .filter(|u| u.is_mineral())
-            .cloned()
-            .collect();
-        for mineral in nearby_minerals {
-            if let Err(e) = self.mining_manager.add_resource(&mineral) {
-                self.log_error(format!("Error adding initial minerals: {e:?}"));
-            };
-        }
-
-        for worker in &self.units.my.workers.clone() {
-            self.back_to_work(worker.tag());
-        }
-
-        let initial_slotting = self
+        let initial_nexus = self
             .units
             .my
             .townhalls
             .first()
             .ok_or_else(|| BuildError::InvalidUnit("No nexus at game start?!".to_string()))
             .cloned();
-        let inserted = match initial_slotting {
-            Ok(nexus) => self.siting_director.add_initial_nexus(&nexus),
-            Err(e) => Err(e),
-        };
 
-        if let Err(e) = inserted {
-            self.log_error(format!("Can't place nexus in initial buildingslot: {e:?}"));
+        if let Ok(nexus) = initial_nexus {
+            let nearby_minerals: Vec<Unit> = self
+                .units
+                .resources
+                .iter()
+                .closer(10.0, self.start_center)
+                .filter(|u| u.is_mineral())
+                .cloned()
+                .collect();
+            for mineral in nearby_minerals {
+                self.mining_manager.add_resource(&mineral, &nexus);
+            }
+
+            for worker in &self.units.my.workers.clone() {
+                self.back_to_work(worker.tag());
+            }
+        } else {
+            self.log_error("No nexus at game start. Is this micro ladder or somethin?".to_string());
         }
     }
 
@@ -190,7 +184,7 @@ impl ReBiCycler {
                 if self.siting_director.lose_assimilator(unit_tag).is_err() {
                     self.log_error("We couldn't find the assimilator to destroy".to_string());
                 }
-                let unemployed = self.mining_manager.remove_resource(unit_tag.tag, false);
+                let unemployed = self.mining_manager.remove_resource(unit_tag.tag);
                 for worker_tag in &unemployed {
                     self.back_to_work(*worker_tag);
                 }
@@ -215,13 +209,13 @@ impl ReBiCycler {
                     }
                 }
             } else if crate::is_minerals(unit_details.type_id) {
-                let unemployed = self.mining_manager.remove_resource(unit_tag.tag, true);
+                let unemployed = self.mining_manager.remove_resource(unit_tag.tag);
 
                 for unit in unemployed {
                     self.back_to_work(unit);
                 }
             } else if unit_tag.unit_type == UnitTypeId::Probe
-                && self.mining_manager.remove_miner(unit_tag.tag)
+                && self.mining_manager.remove_worker(unit_tag.tag)
             {
             }
         }

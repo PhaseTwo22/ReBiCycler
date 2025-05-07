@@ -17,7 +17,7 @@ impl ReBiCycler {
                 Some(false) => [0, 255, 0, a], //green,
             })
         };
-        let miner_tags: Vec<u64> = self.mining_manager.employed_miners().copied().collect();
+        let miner_tags: Vec<u64> = self.mining_manager.employed_miners().collect();
         let actual_workers = self.units.my.workers.iter().find_tags(&miner_tags);
 
         let holding = self.units.my.workers.iter().map(|w| {

@@ -1,3 +1,5 @@
+use std::{collections::HashMap, fmt::Display};
+
 use rust_sc2::{
     action::Target,
     ids::AbilityId,
@@ -143,11 +145,27 @@ impl MinerController {
         Ok(())
     }
 
-    pub fn remove_worker(&mut self, worker_tag: u64) {
-        self.mining_manager.unassign(worker_tag);
+    pub fn remove_worker(&mut self, worker_tag: u64) -> bool {
+        self.mining_manager.unassign(worker_tag).is_ok()
     }
 
     pub fn add_resource(&mut self, resource: &Unit, nearest_townhall: &Unit) {
+        let less_close_mining: Vec<JobId> = self
+            .mining_manager
+            .iter_roles()
+            .filter_map(|p| {
+                if p.tag == resource.tag() {
+                    Some(p.id())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for lc in less_close_mining {
+            self.mining_manager.remove_role(lc);
+        }
+
         let new_resource = ResourcePairing::new(resource, nearest_townhall);
         self.mining_manager.add_role(new_resource);
     }
@@ -192,6 +210,36 @@ impl MinerController {
             }
         }
         newly_unemployed
+    }
+
+    pub fn employed_miners(&self) -> impl Iterator<Item = u64> + use<'_> {
+        self.mining_manager.iter_assignees().map(super::assignment_manager::Identity::id)
+    }
+
+    pub fn saturation(&self) -> HashMap<&ResourcePairing, usize> {
+        self.mining_manager.count_assignments()
+    }
+}
+
+impl Display for MinerController {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut total_gas_jobs = 0;
+        let mut total_minerals_jobs = 0;
+        let mut gas_buildings = 0;
+        let mut mineral_fields = 0;
+        for (pair, count) in self.saturation() {
+            if pair.is_gas() {
+                gas_buildings += 1;
+                total_gas_jobs += count;
+            } else {
+                mineral_fields += 1;
+                total_minerals_jobs += count;
+            }
+        }
+        write!(
+            f,
+            "M:{total_minerals_jobs}:{mineral_fields} G:{total_gas_jobs}:{gas_buildings}"
+        )
     }
 }
 
