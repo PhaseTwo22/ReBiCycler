@@ -327,7 +327,7 @@ impl ReBiCycler {
             let researcher = self
                 .units
                 .my
-                .all
+                .structures
                 .iter()
                 .of_type(researcher)
                 .idle()

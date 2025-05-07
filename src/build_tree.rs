@@ -1,4 +1,9 @@
-use std::{collections::VecDeque, fmt::Display};
+use std::{
+    collections::VecDeque,
+    fmt::{format, Display},
+};
+
+use itertools::Itertools;
 
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction, ComponentState},
@@ -162,16 +167,35 @@ impl BuildOrderTree {
     }
 
     ///returns a vec of indexes of the tree in depth first order
-    pub fn depth_first(&self) -> Vec<usize> {
+    pub fn depth_first(&self) -> Vec<(usize, u32)> {
         let mut visits = Vec::new();
-        let mut queue = VecDeque::new();
-        queue.extend(self.roots.iter());
+        let mut stack = Vec::new();
+        stack.extend(self.roots.iter().map(|r| (r, 0u32, "".to_string())));
 
-        while let Some(next) = queue.pop_front() {
-            if let Some(node) = self.get(next) {
-                visits.push(next);
+        while let Some((next, depth, prefix)) = stack.pop() {
+            if let Some(node) = self.get(*next) {
+                let symbol = visits.push((*next, depth));
+                ("  ", "├─", "└─");
 
-                let _: () = node.children.iter().map(|c| queue.push_front(*c)).collect();
+                let _: () = node
+                    .children
+                    .iter()
+                    .sorted()
+                    .rev()
+                    .enumerate()
+                    .map(|(i, child)| {
+                        stack.push((
+                            child,
+                            depth + 1,
+                            if i == 0 {
+                                format!("{prefix}  ")
+                            } else {
+                                format!("{prefix}| ")
+                            },
+                        ));
+                    })
+                    .rev()
+                    .collect();
             }
         }
 
@@ -199,31 +223,15 @@ impl BuildOrderTree {
 
 impl Display for BuildOrderTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut out = String::new();
-        let mut queue = VecDeque::new();
-        queue.extend(self.roots.iter());
+        let order = self.depth_first();
 
-        while let Some(next) = queue.pop_front() {
-            let node = self.get(next);
-
-            if let Some(treenode) = node {
-                let _: () = treenode
-                    .children
-                    .iter()
-                    .map(|c| queue.push_front(*c))
-                    .collect();
-                let depth = self.depth_of(treenode.index).unwrap_or(0);
-                if treenode.value.display {
-                    out += &format!(
-                        "{}{}{}\n",
-                        "-".repeat(depth),
-                        treenode.value.name,
-                        treenode.value.state
-                    );
-                }
+        for (id, depth) in order {
+            if let Some(node) = self.get(id) {
+                write!(f, "{out}")?;
+                ("  ", "├─", "└─");
             }
         }
-        write!(f, "{out}")
+        write!(f, "")
     }
 }
 #[derive(Debug)]
@@ -390,7 +398,10 @@ mod tests {
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 5
         assert!(tree.add_node(blank_component(), Some(5)).is_ok()); // 6
 
-        assert_eq!(tree.depth_first(), vec![0, 5, 6, 4, 1, 2, 3]);
+        assert_eq!(
+            tree.depth_first(),
+            vec![(0, 0), (5, 1), (6, 2), (4, 1), (1, 1), (2, 2), (3, 3)]
+        );
     }
 
     #[test]

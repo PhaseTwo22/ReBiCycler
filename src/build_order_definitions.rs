@@ -8,8 +8,10 @@ use crate::{
 /// nexus first, get warpgate, then tech to twilight, research charge, then 8 gates
 pub fn nexus_first_two_base_charge() -> BuildOrderTree {
     nexus_first()
-        .root("graft", &[], &[], false, None, true)
+        .empty_root(Some("graft"))
+        .subtree(make_units())
         .subtree(straight_to_twilight())
+        .subtree(get_charge_and_plus_one())
         .tree
 }
 
@@ -48,6 +50,24 @@ fn straight_to_twilight() -> TreePointer {
             )],
             true,
             Some(A::Construct(UnitTypeId::CyberneticsCore)),
+            true,
+        )
+        .leaf(
+            "warpgate",
+            &[ConditionGroup::new(
+                &[C::StructureComplete(UnitTypeId::CyberneticsCore)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::WarpGateResearch)],
+                Op::All,
+            )],
+            false,
+            Some(A::Research(
+                UpgradeId::WarpGateResearch,
+                AbilityId::ResearchWarpGate,
+                UnitTypeId::CyberneticsCore,
+            )),
             true,
         )
         .child(
@@ -127,6 +147,164 @@ fn nexus_first() -> TreePointer {
             )],
             false,
             Some(A::Construct(UnitTypeId::Gateway)),
+            true,
+        )
+}
+
+fn make_units() -> TreePointer {
+    use BuildCondition as C;
+    use BuildOrderAction as A;
+    use ConditionOperator as Op;
+    TreePointer::new()
+        .empty_root(Some("units"))
+        .child(
+            "two zealots",
+            &[ConditionGroup::new(&[C::Always], Op::All)],
+            &[ConditionGroup::new(
+                &[
+                    C::TotalAndOrderedAtLeast(UnitTypeId::Zealot, 2),
+                    C::TechComplete(UpgradeId::WarpGateResearch),
+                ],
+                Op::Any,
+            )],
+            false,
+            Some(A::Train(
+                UnitTypeId::Stalker,
+                AbilityId::GatewayTrainStalker,
+            )),
+            true,
+        )
+        .child(
+            "safety stalkers",
+            &[ConditionGroup::new(&[C::Always], Op::All)],
+            &[ConditionGroup::new(
+                &[
+                    C::TotalAndOrderedAtLeast(UnitTypeId::Stalker, 6),
+                    C::TechComplete(UpgradeId::WarpGateResearch),
+                ],
+                Op::Any,
+            )],
+            false,
+            Some(A::Train(
+                UnitTypeId::Stalker,
+                AbilityId::GatewayTrainStalker,
+            )),
+            true,
+        )
+        .child(
+            "safety stalkers WG",
+            &[ConditionGroup::new(&[C::Always], Op::All)],
+            &[ConditionGroup::new(
+                &[C::TotalAndOrderedAtLeast(UnitTypeId::Stalker, 6)],
+                Op::Any,
+            )],
+            true,
+            Some(A::Train(
+                UnitTypeId::Stalker,
+                AbilityId::WarpGateTrainStalker,
+            )),
+            true,
+        )
+        .child(
+            "zealots forever",
+            &[ConditionGroup::new(&[C::Always], Op::All)],
+            &[ConditionGroup::new(&[C::Never], Op::All)],
+            false,
+            Some(A::Train(UnitTypeId::Zealot, AbilityId::WarpGateTrainZealot)),
+            true,
+        )
+}
+
+fn get_charge_and_plus_one() -> TreePointer {
+    use BuildCondition as C;
+    use BuildOrderAction as A;
+    use ConditionOperator as Op;
+    TreePointer::new()
+        .empty_root(None)
+        .leaf(
+            "charge",
+            &[ConditionGroup::new(
+                &[C::StructureComplete(UnitTypeId::TwilightCouncil)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::Charge)],
+                Op::All,
+            )],
+            false,
+            Some(A::Research(
+                UpgradeId::Charge,
+                AbilityId::ResearchCharge,
+                UnitTypeId::TwilightCouncil,
+            )),
+            true,
+        )
+        .child(
+            "forge",
+            &[ConditionGroup::new(
+                &[C::AtLeastCount(UnitTypeId::TwilightCouncil, 1)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::AtLeastCount(UnitTypeId::Forge, 1)],
+                Op::All,
+            )],
+            false,
+            Some(A::Construct(UnitTypeId::Forge)),
+            true,
+        )
+        .child(
+            "plus 1",
+            &[ConditionGroup::new(
+                &[C::StructureComplete(UnitTypeId::TwilightCouncil)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::ProtossGroundWeaponsLevel1)],
+                Op::All,
+            )],
+            false,
+            Some(A::Research(
+                UpgradeId::ProtossGroundWeaponsLevel1,
+                AbilityId::ForgeResearchProtossGroundWeaponsLevel1,
+                UnitTypeId::Forge,
+            )),
+            true,
+        )
+        .child(
+            "plus 2",
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::ProtossGroundWeaponsLevel1)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::ProtossGroundWeaponsLevel2)],
+                Op::All,
+            )],
+            false,
+            Some(A::Research(
+                UpgradeId::ProtossGroundWeaponsLevel2,
+                AbilityId::ForgeResearchProtossGroundWeaponsLevel2,
+                UnitTypeId::Forge,
+            )),
+            true,
+        )
+        .child(
+            "plus 3",
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::ProtossGroundWeaponsLevel2)],
+                Op::All,
+            )],
+            &[ConditionGroup::new(
+                &[C::TechComplete(UpgradeId::ProtossGroundWeaponsLevel3)],
+                Op::All,
+            )],
+            false,
+            Some(A::Research(
+                UpgradeId::ProtossGroundWeaponsLevel3,
+                AbilityId::ForgeResearchProtossGroundWeaponsLevel3,
+                UnitTypeId::Forge,
+            )),
             true,
         )
 }
@@ -340,6 +518,30 @@ mod tests {
         pointer = pointer
             .child("graft", &[], &[], false, None, true)
             .subtree(sub_sub_tree);
+
+        assert_eq!(
+            pointer.tree.to_string(),
+            "first➖\n-child➖\n--graft➖\n---subsubroot➖\n----subsubleaf2➖\n----subsubleaf➖\n--subroot➖\n---subleaf2➖\n---subleaf➖\n"
+        );
+    }
+
+    #[test]
+    fn double_subtree() {
+        let mut pointer = TreePointer::new()
+            .root("first", &[], &[], false, None, true)
+            .child("child", &[], &[], false, None, true);
+
+        let subtree = TreePointer::new()
+            .root("1subroot", &[], &[], false, None, true)
+            .leaf("1subleaf", &[], &[], false, None, true)
+            .leaf("1subleaf2", &[], &[], false, None, true);
+
+        let subtree2 = TreePointer::new()
+            .root("2subroot", &[], &[], false, None, true)
+            .leaf("2subleaf", &[], &[], false, None, true)
+            .leaf("2subleaf2", &[], &[], false, None, true);
+
+        pointer = pointer.subtree(subtree).subtree(subtree2);
 
         assert_eq!(
             pointer.tree.to_string(),

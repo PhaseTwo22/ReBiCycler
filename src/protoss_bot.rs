@@ -84,6 +84,7 @@ impl Player for ReBiCycler {
 
         if frame_no % 50 == 0 {
             self.step_build();
+            self.maintain_supply();
             //self.map_worker_activity(frame_no);
         }
 
