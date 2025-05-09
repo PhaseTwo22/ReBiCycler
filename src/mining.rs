@@ -8,11 +8,13 @@ use rust_sc2::{
     units::Units,
 };
 
-use crate::assignment_manager::{AssignmentManager, Assigns, Commands, Identity};
+use crate::assignment_manager::{AssignmentError, AssignmentManager, Assigns, Commands, Identity};
 
 const MINERAL_MINE_DISTANCE: f32 = 1.0;
 const GAS_MINE_DISTANCE: f32 = 2.5;
 const RETURN_CARGO_DISTANCE: f32 = 2.9;
+
+type MiningAssignmentError = AssignmentError<Miner, ResourcePairing, u64, JobId>;
 
 #[derive(Default)]
 pub struct MinerController {
@@ -170,14 +172,20 @@ impl MinerController {
         self.mining_manager.add_role(new_resource);
     }
 
-    pub fn add_townhall(&mut self, townhall: &Unit, nearby_resources: &Units) {
+    pub fn add_townhall(
+        &mut self,
+        townhall: &Unit,
+        nearby_resources: &Units,
+    ) -> Result<(), MiningAssignmentError> {
         let new_roles: Vec<ResourcePairing> = nearby_resources
             .iter()
             .map(|resource| ResourcePairing::new(resource, townhall))
             .collect();
         for role in new_roles {
-            self.mining_manager.add_role(role);
+            self.mining_manager.add_role(role)?;
         }
+
+        Ok(())
     }
 
     pub fn remove_resource(&mut self, resource_tag: u64) -> Vec<u64> {

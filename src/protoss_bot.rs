@@ -47,7 +47,7 @@ impl Player for ReBiCycler {
 
     /// called once at the start of the game, before the first frame
     fn on_start(&mut self) -> SC2Result<()> {
-        self.build_order = nexus_first_two_base_charge();
+        self.build_order = nexus_first_two_base_charge().unwrap();
 
         let map_center = self.game_info.map_center;
 

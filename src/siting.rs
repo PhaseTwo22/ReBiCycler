@@ -873,8 +873,6 @@ impl ReBiCycler {
 
     /// When a new base finishes, we want to make a new Base Manager for it.
     /// Add the resources and existing buildings, if any.
-    /// # Errors
-
     pub fn new_base_finished(&mut self, nexus: &Unit) {
         if let Some(expansion) = self.expansions.iter().find(|e| e.loc == nexus.position()) {
             let mut resources = self

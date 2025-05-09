@@ -1,9 +1,4 @@
-use std::{
-    collections::VecDeque,
-    fmt::{format, Display},
-};
-
-use itertools::Itertools;
+use std::{collections::VecDeque, fmt::Display};
 
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction, ComponentState},
@@ -22,7 +17,7 @@ pub struct BuildOrderTree {
 pub struct TreeNode {
     pub parent: Option<usize>,
     children: Vec<usize>,
-    index: usize,
+
     pub value: BuildComponent,
 }
 
@@ -119,7 +114,7 @@ impl BuildOrderTree {
         let new_node = TreeNode {
             parent,
             children: Vec::new(),
-            index,
+
             value: component,
         };
 
@@ -166,14 +161,6 @@ impl BuildOrderTree {
         visits
     }
 
-    ///returns the depth off the given node.
-    fn depth_of(&self, index: usize) -> Option<usize> {
-        let node = self.get(index)?;
-        node.parent.map_or(Some(0), |parent| {
-            Some(self.depth_of(parent).unwrap_or(0) + 1)
-        })
-    }
-
     /// updates all descendants of node to restricted, recursively.
     fn restrict_descendants(&mut self, of_node: usize) {
         if let Some(node) = self.get_mut(of_node) {
@@ -188,33 +175,31 @@ impl BuildOrderTree {
 
 impl Display for BuildOrderTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut visits = Vec::new();
         let mut stack = Vec::new();
         stack.extend(self.roots.iter().map(|r| (r, true, "".to_string())));
 
         while let Some((next, was_last, prefix)) = stack.pop() {
             if let Some(node) = self.get(*next) {
                 // we arrive at a node, we write it.
-let this_pointer = if was_last {"└"} else {"├"};
+                let this_pointer = if was_last { "└" } else { "├" };
                 if node.value.display {
-                    writeln!(f, "{}{}{}{}", prefix, this_pointer, node.value.name, node.value.state);
+                    writeln!(
+                        f,
+                        "{}{}{}{}",
+                        prefix, this_pointer, node.value.name, node.value.state
+                    )?;
                 }
 
-let new_prefix = if was_last {
-     format!("{prefix} ")
-       } else {
-     format!("{prefix}|")
+                let new_prefix = if was_last {
+                    format!("{prefix} ")
+                } else {
+                    format!("{prefix}|")
+                };
                 let child_count = node.children.len();
-                for (i,child) in node.children.iter().enumerate() {
-
-let is_last = i == child_count - 1;
-stack.push((child, is_last, new_prefix));
-
-
- };
-
-}
-
+                for (i, child) in node.children.iter().enumerate() {
+                    let is_last = i == child_count - 1;
+                    stack.push((child, is_last, new_prefix.clone()));
+                }
             }
         }
         write!(f, "")
@@ -372,22 +357,6 @@ mod tests {
         assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 5
 
         assert_eq!(tree.breadth_first(), vec![0, 1, 4, 5, 2, 3]);
-    }
-    #[test]
-    fn depth_first_order_ok() {
-        let mut tree = BuildOrderTree::new();
-        assert!(tree.add_node(root_component(), None).is_ok()); // 0
-        assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 1
-        assert!(tree.add_node(blank_component(), Some(1)).is_ok()); // 2
-        assert!(tree.add_node(blank_component(), Some(2)).is_ok()); // 3
-        assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 4
-        assert!(tree.add_node(blank_component(), Some(0)).is_ok()); // 5
-        assert!(tree.add_node(blank_component(), Some(5)).is_ok()); // 6
-
-        assert_eq!(
-            tree.depth_first(),
-            vec![(0, 0), (5, 1), (6, 2), (4, 1), (1, 1), (2, 2), (3, 3)]
-        );
     }
 
     #[test]

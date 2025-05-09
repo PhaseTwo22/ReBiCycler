@@ -7,7 +7,6 @@ use std::{
 /// I want a generic thing that I can use to manage my assignments and units.
 /// It needs to:
 /// - CRUD assignments and roles
-
 pub struct AssignmentManager<A, R, I, J>
 where
     A: Identity<I>,
@@ -309,5 +308,3 @@ where
     RoleAlreadyExists(R),
     RoleDoesntExist(J),
 }
-
-pub enum CommandError {}

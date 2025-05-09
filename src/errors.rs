@@ -51,11 +51,6 @@ pub enum BuildingTransitionError {
     InvalidUnit,
 }
 
-#[derive(Debug)]
-pub enum MicroError {
-    UnitNotRegistered(Tag),
-}
-
 pub struct AssignmentError {
     assignee: Tag,
     manager: String,

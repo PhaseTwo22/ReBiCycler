@@ -2,20 +2,21 @@ use rust_sc2::ids::{AbilityId, UnitTypeId, UpgradeId};
 
 use crate::{
     build_orders::{BuildCondition, BuildOrderAction},
-    build_tree::{BuildComponent, BuildOrderTree, ConditionGroup, ConditionOperator},
+    build_tree::{BuildComponent, BuildOrderTree, ConditionGroup, ConditionOperator, TreeError},
 };
 
 /// nexus first, get warpgate, then tech to twilight, research charge, then 8 gates
-pub fn nexus_first_two_base_charge() -> BuildOrderTree {
-    nexus_first()
-        .empty_root(Some("graft"))
-        .subtree(make_units())
-        .subtree(straight_to_twilight())
-        .subtree(get_charge_and_plus_one())
-        .tree
+pub fn nexus_first_two_base_charge() -> Result<BuildOrderTree, TreeError> {
+    let tree = nexus_first()?
+        .empty_root(Some("graft"))?
+        .subtree(make_units()?)?
+        .subtree(straight_to_twilight()?)?
+        .subtree(get_charge_and_plus_one()?)?
+        .tree;
+    Ok(tree)
 }
 
-fn straight_to_twilight() -> TreePointer {
+fn straight_to_twilight() -> Result<TreePointer, TreeError> {
     use BuildCondition as C;
     use BuildOrderAction as A;
     use ConditionOperator as Op;
@@ -34,7 +35,7 @@ fn straight_to_twilight() -> TreePointer {
             true,
             Some(A::Construct(UnitTypeId::Assimilator)),
             true,
-        )
+        )?
         .child(
             "cybercore",
             &[ConditionGroup::new(
@@ -51,7 +52,7 @@ fn straight_to_twilight() -> TreePointer {
             true,
             Some(A::Construct(UnitTypeId::CyberneticsCore)),
             true,
-        )
+        )?
         .leaf(
             "warpgate",
             &[ConditionGroup::new(
@@ -69,7 +70,7 @@ fn straight_to_twilight() -> TreePointer {
                 UnitTypeId::CyberneticsCore,
             )),
             true,
-        )
+        )?
         .child(
             "twilight",
             &[ConditionGroup::new(
@@ -86,7 +87,7 @@ fn straight_to_twilight() -> TreePointer {
         )
 }
 /// an opener: probes to 14, pylon, resume probes, nexus, then two gateways.
-fn nexus_first() -> TreePointer {
+fn nexus_first() -> Result<TreePointer, TreeError> {
     use BuildCondition as C;
     use BuildOrderAction as A;
     use ConditionOperator as Op;
@@ -98,7 +99,7 @@ fn nexus_first() -> TreePointer {
             true,
             Some(A::Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe)),
             true,
-        )
+        )?
         .child(
             "first pylon",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -109,7 +110,7 @@ fn nexus_first() -> TreePointer {
             true,
             Some(A::Construct(UnitTypeId::Pylon)),
             true,
-        )
+        )?
         .child(
             "nexus first",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -120,7 +121,7 @@ fn nexus_first() -> TreePointer {
             true,
             Some(A::Construct(UnitTypeId::Nexus)),
             true,
-        )
+        )?
         .leaf(
             "probe to 38",
             &[ConditionGroup::new(
@@ -134,7 +135,7 @@ fn nexus_first() -> TreePointer {
             false,
             Some(A::Train(UnitTypeId::Probe, AbilityId::NexusTrainProbe)),
             true,
-        )
+        )?
         .child(
             "two gateways",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -151,12 +152,12 @@ fn nexus_first() -> TreePointer {
         )
 }
 
-fn make_units() -> TreePointer {
+fn make_units() -> Result<TreePointer, TreeError> {
     use BuildCondition as C;
     use BuildOrderAction as A;
     use ConditionOperator as Op;
     TreePointer::new()
-        .empty_root(Some("units"))
+        .empty_root(Some("units"))?
         .child(
             "two zealots",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -173,7 +174,7 @@ fn make_units() -> TreePointer {
                 AbilityId::GatewayTrainStalker,
             )),
             true,
-        )
+        )?
         .child(
             "safety stalkers",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -190,7 +191,7 @@ fn make_units() -> TreePointer {
                 AbilityId::GatewayTrainStalker,
             )),
             true,
-        )
+        )?
         .child(
             "safety stalkers WG",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -204,7 +205,7 @@ fn make_units() -> TreePointer {
                 AbilityId::WarpGateTrainStalker,
             )),
             true,
-        )
+        )?
         .child(
             "zealots forever",
             &[ConditionGroup::new(&[C::Always], Op::All)],
@@ -215,12 +216,12 @@ fn make_units() -> TreePointer {
         )
 }
 
-fn get_charge_and_plus_one() -> TreePointer {
+fn get_charge_and_plus_one() -> Result<TreePointer, TreeError> {
     use BuildCondition as C;
     use BuildOrderAction as A;
     use ConditionOperator as Op;
     TreePointer::new()
-        .empty_root(None)
+        .empty_root(None)?
         .leaf(
             "charge",
             &[ConditionGroup::new(
@@ -238,7 +239,7 @@ fn get_charge_and_plus_one() -> TreePointer {
                 UnitTypeId::TwilightCouncil,
             )),
             true,
-        )
+        )?
         .child(
             "forge",
             &[ConditionGroup::new(
@@ -252,7 +253,7 @@ fn get_charge_and_plus_one() -> TreePointer {
             false,
             Some(A::Construct(UnitTypeId::Forge)),
             true,
-        )
+        )?
         .child(
             "plus 1",
             &[ConditionGroup::new(
@@ -270,7 +271,7 @@ fn get_charge_and_plus_one() -> TreePointer {
                 UnitTypeId::Forge,
             )),
             true,
-        )
+        )?
         .child(
             "plus 2",
             &[ConditionGroup::new(
@@ -288,7 +289,7 @@ fn get_charge_and_plus_one() -> TreePointer {
                 UnitTypeId::Forge,
             )),
             true,
-        )
+        )?
         .child(
             "plus 3",
             &[ConditionGroup::new(
@@ -330,18 +331,16 @@ impl TreePointer {
         restrictive: bool,
         action: Option<BuildOrderAction>,
         display: bool,
-    ) -> Self {
-        let _ = self
-            .tree
-            .add_node(
-                BuildComponent::new(name, start, end, restrictive, action, display),
-                None,
-            )
-            .unwrap();
-        Self {
+    ) -> Result<TreePointer, TreeError> {
+        let _ = self.tree.add_node(
+            BuildComponent::new(name, start, end, restrictive, action, display),
+            None,
+        )?;
+
+        Ok(Self {
             index: self.tree.len() - 1,
             tree: self.tree,
-        }
+        })
     }
     /// Adds a new node to the tree as a child of the current node but leaves pointer at current node
     fn leaf(
@@ -352,15 +351,12 @@ impl TreePointer {
         restrictive: bool,
         action: Option<BuildOrderAction>,
         display: bool,
-    ) -> Self {
-        let _ = self
-            .tree
-            .add_node(
-                BuildComponent::new(name, start, end, restrictive, action, display),
-                Some(self.index),
-            )
-            .unwrap();
-        self
+    ) -> Result<Self, TreeError> {
+        let _ = self.tree.add_node(
+            BuildComponent::new(name, start, end, restrictive, action, display),
+            Some(self.index),
+        )?;
+        Ok(self)
     }
     /// Adds a node to the tree as a child of the current node and points to the new node
     fn child(
@@ -371,61 +367,33 @@ impl TreePointer {
         restrictive: bool,
         action: Option<BuildOrderAction>,
         display: bool,
-    ) -> Self {
-        self.tree
-            .add_node(
-                BuildComponent::new(name, start, end, restrictive, action, display),
-                Some(self.index),
-            )
-            .unwrap();
-        Self {
+    ) -> Result<Self, TreeError> {
+        self.tree.add_node(
+            BuildComponent::new(name, start, end, restrictive, action, display),
+            Some(self.index),
+        )?;
+        Ok(Self {
             index: self.tree.len() - 1,
             tree: self.tree,
-        }
+        })
     }
 
     /// Combines the two trees, with all roots becoming children of the current node
-    fn subtree(mut self, other: Self) -> Self {
+    fn subtree(mut self, other: Self) -> Result<Self, TreeError> {
         for other_index in other.tree.breadth_first() {
             if let Some(node) = other.tree.get(other_index) {
-                if self
-                    .tree
-                    .add_node(
-                        node.value.clone(),
-                        node.parent
-                            .map_or(Some(self.index), |p| Some(p + self.index + 1)),
-                    )
-                    .is_err()
-                {
-                    panic!("Unable to fuse trees at index {other_index}")
-                }
+                self.tree.add_node(
+                    node.value.clone(),
+                    node.parent
+                        .map_or(Some(self.index), |p| Some(p + self.index + 1)),
+                )?;
             }
         }
-        self
+        Ok(self)
     }
-    /// Add a leaf to the graph to build an Assimilator. will build assimilators until `number` is reached.
-    fn gas_leaf(self, number: usize) -> Self {
-        use BuildCondition as C;
-        use BuildOrderAction as A;
-        use ConditionOperator as Op;
 
-        self.leaf(
-            &format!("gas #{number}"),
-            &[],
-            &[ConditionGroup::new(
-                &[
-                    C::AtLeastCount(UnitTypeId::Assimilator, number),
-                    C::AtLeastCount(UnitTypeId::AssimilatorRich, number),
-                ],
-                Op::Any,
-            )],
-            false,
-            Some(A::Construct(UnitTypeId::Assimilator)),
-            true,
-        )
-    }
     /// Adds a root node that does nothing, with the given name, if any.
-    fn empty_root(self, name: Option<&str>) -> Self {
+    fn empty_root(self, name: Option<&str>) -> Result<Self, TreeError> {
         self.root(
             name.unwrap_or("empty_root"),
             &[],
@@ -444,9 +412,9 @@ mod tests {
     #[test]
     fn one_root() {
         let pointer = TreePointer::new();
-        let tree = pointer.root("first", &[], &[], false, None, true).tree;
-        assert_eq!(tree.to_string(), "first➖\n");
-        assert_eq!(tree.len(), 1);
+        let tree = pointer
+            .root("first", &[], &[], false, None, true)
+            .expect("Tree construction failed!");
     }
 
     #[test]
@@ -455,7 +423,8 @@ mod tests {
 
         let tree = pointer
             .root("first", &[], &[], false, None, true)
-            .root("second", &[], &[], false, None, true)
+            .and_then(|t| t.root("second", &[], &[], false, None, true))
+            .expect("Tree construction failed!")
             .tree;
 
         assert_eq!(tree.to_string(), "first➖\nsecond➖\n");
@@ -467,7 +436,8 @@ mod tests {
         let pointer = TreePointer::new();
         let tree = pointer
             .root("first", &[], &[], false, None, true)
-            .child("child", &[], &[], false, None, true)
+            .and_then(|t| t.child("child", &[], &[], false, None, true))
+            .expect("Tree construction failed!")
             .tree;
         assert_eq!(tree.to_string(), "first➖\n-child➖\n");
         assert_eq!(tree.len(), 2);
@@ -478,9 +448,10 @@ mod tests {
         let pointer = TreePointer::new();
         let tree = pointer
             .root("first", &[], &[], false, None, true)
-            .leaf("leaf1", &[], &[], false, None, true)
-            .child("child", &[], &[], false, None, true)
-            .leaf("leaf2", &[], &[], false, None, true)
+            .and_then(|t| t.leaf("leaf1", &[], &[], false, None, true))
+            .and_then(|t| t.child("child", &[], &[], false, None, true))
+            .and_then(|t| t.leaf("leaf2", &[], &[], false, None, true))
+            .expect("Tree construction failed!")
             .tree;
         assert_eq!(tree.to_string(), "first➖\n-child➖\n--leaf2➖\n-leaf1➖\n");
         assert_eq!(tree.len(), 4);
@@ -490,19 +461,21 @@ mod tests {
     fn subtree_ok() {
         let mut pointer = TreePointer::new()
             .root("first", &[], &[], false, None, true)
-            .child("child", &[], &[], false, None, true);
+            .and_then(|t| t.child("child", &[], &[], false, None, true))
+            .expect("Tree construction failed!");
 
         let subtree = TreePointer::new()
             .root("subroot", &[], &[], false, None, true)
-            .leaf("subleaf", &[], &[], false, None, true)
-            .leaf("subleaf2", &[], &[], false, None, true);
+            .and_then(|t| t.leaf("subleaf", &[], &[], false, None, true))
+            .and_then(|t| t.leaf("subleaf2", &[], &[], false, None, true))
+            .expect("Tree construction failed!");
 
         assert_eq!(
             subtree.tree.to_string(),
             "subroot➖\n-subleaf2➖\n-subleaf➖\n"
         );
 
-        pointer = pointer.subtree(subtree);
+        pointer = pointer.subtree(subtree).expect("Tree construction failed!");
 
         assert_eq!(
             pointer.tree.to_string(),
@@ -512,12 +485,14 @@ mod tests {
 
         let sub_sub_tree = TreePointer::new()
             .root("subsubroot", &[], &[], false, None, true)
-            .leaf("subsubleaf", &[], &[], false, None, true)
-            .leaf("subsubleaf2", &[], &[], false, None, true);
+            .and_then(|t| t.leaf("subsubleaf", &[], &[], false, None, true))
+            .and_then(|t| t.leaf("subsubleaf2", &[], &[], false, None, true))
+            .expect("Tree construction failed!");
 
         pointer = pointer
             .child("graft", &[], &[], false, None, true)
-            .subtree(sub_sub_tree);
+            .and_then(|t| t.subtree(sub_sub_tree))
+            .expect("Tree construction failed!");
 
         assert_eq!(
             pointer.tree.to_string(),
@@ -529,19 +504,26 @@ mod tests {
     fn double_subtree() {
         let mut pointer = TreePointer::new()
             .root("first", &[], &[], false, None, true)
-            .child("child", &[], &[], false, None, true);
+            .and_then(|t| t.child("child", &[], &[], false, None, true))
+            .expect("Tree construction failed!");
 
         let subtree = TreePointer::new()
             .root("1subroot", &[], &[], false, None, true)
-            .leaf("1subleaf", &[], &[], false, None, true)
-            .leaf("1subleaf2", &[], &[], false, None, true);
+            .and_then(|t| t.leaf("1subleaf", &[], &[], false, None, true))
+            .and_then(|t| t.leaf("1subleaf2", &[], &[], false, None, true))
+            .expect("Tree construction failed!");
 
         let subtree2 = TreePointer::new()
             .root("2subroot", &[], &[], false, None, true)
-            .leaf("2subleaf", &[], &[], false, None, true)
-            .leaf("2subleaf2", &[], &[], false, None, true);
+            .and_then(|t| t.leaf("2subleaf", &[], &[], false, None, true))
+            .and_then(|t| t.leaf("2subleaf2", &[], &[], false, None, true))
+            .expect("Tree construction failed!");
 
-        pointer = pointer.subtree(subtree).subtree(subtree2);
+        pointer = pointer
+            .subtree(subtree)
+            .expect("Tree construction failed!")
+            .subtree(subtree2)
+            .expect("Tree construction failed!");
 
         assert_eq!(
             pointer.tree.to_string(),

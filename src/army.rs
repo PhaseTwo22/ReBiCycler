@@ -1,11 +1,4 @@
-use std::collections::HashMap;
-
-use rust_sc2::{
-    action::Target,
-    ids::{AbilityId, UnitTypeId},
-    prelude::Point2,
-    unit::Unit,
-};
+use rust_sc2::{action::Target, ids::AbilityId, prelude::Point2, unit::Unit};
 
 use crate::protoss_bot::ReBiCycler;
 
@@ -40,78 +33,17 @@ impl ReBiCycler {
         }
     }
 
-    pub fn assign_to_army(&mut self, unit: UnitState) {
-        self.army_manager.assign_unit(unit);
+    pub fn assign_to_army(&mut self, unit: UnitState) -> Result<(), ArmyIssue> {
+        self.army_manager.assign_unit(unit)
     }
 
     pub fn new_mission(&mut self, mission: MissionType, rally_point: Point2) -> usize {
         self.army_manager.add_mission(mission, rally_point)
     }
 }
-#[derive(Default)]
-pub struct ArmyController {
-    active_missions: Vec<Mission>,
-    assignments: HashMap<u64, MissionAssignment>,
-}
-
-impl ArmyController {
-    fn add_mission(&mut self, mission_type: MissionType, rally_point: Point2) -> usize {
-        let new_index = self.active_missions.len();
-        self.active_missions
-            .push(Mission::new(new_index, mission_type, rally_point));
-        new_index
-    }
-
-    fn command_all_units(&self) -> Vec<Result<Command, ArmyIssue>> {
-        self.assignments
-            .values()
-            .map(|assignment| self.command_one_unit(assignment))
-            .collect()
-    }
-    fn command_one_unit(&self, assignment: &MissionAssignment) -> Result<Command, ArmyIssue> {
-        let mission = self
-            .active_missions
-            .get(assignment.mission)
-            .ok_or(ArmyIssue::InvalidMission)?;
-        Ok(mission.command(&assignment.unit))
-    }
-
-    fn assign_unit(&mut self, unit: UnitState) -> Result<(), ArmyIssue> {
-        let mission = self
-            .active_missions
-            .iter()
-            .find(|mission| mission.needs(&unit))
-            .ok_or(ArmyIssue::NoAssignmentsForThisUnit)?;
-
-        self.assignments.insert(
-            unit.tag,
-            MissionAssignment {
-                unit,
-                mission: mission.id,
-            },
-        );
-        Ok(())
-    }
-
-    fn update_unit_state(&mut self, unit: UnitState) {
-        if let Some(old_state) = self.assignments.get_mut(&unit.tag) {
-            old_state.unit = unit;
-        }
-    }
-}
 
 type Command = (u64, AbilityId, Target, bool);
 
-#[derive(Debug, Clone, Copy)]
-enum ArmyIssue {
-    NoAssignmentsForThisUnit,
-    InvalidMission,
-}
-
-struct MissionAssignment {
-    unit: UnitState,
-    mission: usize,
-}
 struct Mission {
     id: usize,
     mission_type: MissionType,
@@ -167,14 +99,26 @@ impl Mission {
         let needs_detector = matches!(self.mission_type, MissionType::DetectArea(_));
 
         match (needs_detector, unit.is_detector) {
-            (true, true) => true,
-            (false, false) => true,
-            (false, true) => false,
-            (true, false) => false,
+            (true, true) | (false, false) => true,
+            (false, true) | (true, false) => false,
         }
     }
 }
 
+#[derive(Debug)]
+pub struct ArmyIssue;
+pub struct UnitState {
+    is_detector: bool,
+    tag: u64,
+}
+impl UnitState {
+    fn from_unit(_: &Unit) -> Self {
+        Self {
+            is_detector: false,
+            tag: 10,
+        }
+    }
+}
 pub enum MissionType {
     BabysitConstruction(Point2),
     DetectArea(Point2),
@@ -186,20 +130,37 @@ pub enum MissionStatus {
     InProgress,
     Complete,
 }
-
-pub struct UnitState {
-    tag: u64,
-    type_id: UnitTypeId,
-
-    is_detector: bool,
-}
-impl UnitState {
-    pub fn from_unit(unit: &Unit) -> Self {
-        Self {
-            tag: unit.tag(),
-            type_id: unit.type_id(),
-
-            is_detector: unit.is_detector(),
+impl MissionStatus {
+    fn begin(self) -> Self {
+        match self {
+            Self::PendingForces => Self::InProgress,
+            otherwise => otherwise,
         }
+    }
+
+    fn finish(self) -> Self {
+        match self {
+            Self::InProgress => Self::Complete,
+            otherwise => otherwise,
+        }
+    }
+}
+#[derive(Default)]
+pub struct ArmyController;
+impl ArmyController {
+    fn update_army_states(&self) {
+        todo!()
+    }
+    fn update_unit_state(&mut self, _: UnitState) {
+        todo!()
+    }
+    fn command_all_units(&self) -> Vec<Result<Command, ArmyIssue>> {
+        todo!()
+    }
+    fn assign_unit(&self, _: UnitState) -> Result<(), ArmyIssue> {
+        todo!()
+    }
+    fn add_mission(&mut self, _: MissionType, _: Point2) -> usize {
+        todo!()
     }
 }
