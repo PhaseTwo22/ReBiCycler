@@ -1,6 +1,6 @@
 use crate::army::ArmyController;
 use crate::assignment_manager::{Commands, Identity};
-use crate::build_order_definitions::nexus_first_two_base_charge;
+use crate::build_order_definitions;
 use crate::build_tree::BuildOrderTree;
 use crate::chatter::{ChatAction, ChatController};
 use crate::construction::ConstructionManager;
@@ -47,7 +47,7 @@ impl Player for ReBiCycler {
 
     /// called once at the start of the game, before the first frame
     fn on_start(&mut self) -> SC2Result<()> {
-        self.build_order = nexus_first_two_base_charge().unwrap();
+        self.build_order = BuildOrderTree::nexus_first_two_base_charge().unwrap();
 
         let map_center = self.game_info.map_center;
 
@@ -137,7 +137,7 @@ impl ReBiCycler {
     pub fn new() -> Self {
         Self {
             /* initializing fields */
-            build_order: BuildOrderTree::new(),
+            build_order: BuildOrderTree::default(),
             game_started: false,
             ..Default::default()
         }
