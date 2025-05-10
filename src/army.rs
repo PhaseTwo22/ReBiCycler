@@ -1,6 +1,9 @@
 use rust_sc2::{action::Target, ids::AbilityId, prelude::Point2, unit::Unit};
 
-use crate::protoss_bot::ReBiCycler;
+use crate::{
+    assignment_manager::{AssignmentManager, Identity},
+    protoss_bot::ReBiCycler,
+};
 
 impl ReBiCycler {
     pub fn update_army_states(&mut self) {
@@ -44,11 +47,31 @@ impl ReBiCycler {
 
 type Command = (u64, AbilityId, Target, bool);
 
+#[derive(Clone)]
 struct Mission {
     id: usize,
     mission_type: MissionType,
     status: MissionStatus,
     rally_point: Point2,
+}
+impl std::cmp::PartialEq for Mission {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+    fn ne(&self, other: &Self) -> bool {
+        self.id != other.id
+    }
+}
+impl std::cmp::Eq for Mission {}
+impl Identity<usize> for Mission {
+    fn id(&self) -> usize {
+        self.id
+    }
+}
+impl std::hash::Hash for Mission {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_usize(self.id);
+    }
 }
 
 impl Mission {
@@ -119,12 +142,14 @@ impl UnitState {
         }
     }
 }
+#[derive(Clone, Hash)]
 pub enum MissionType {
     BabysitConstruction(Point2),
     DetectArea(Point2),
     AttackEnemy(Point2),
 }
 
+#[derive(Clone, Hash)]
 pub enum MissionStatus {
     PendingForces,
     InProgress,
@@ -146,7 +171,9 @@ impl MissionStatus {
     }
 }
 #[derive(Default)]
-pub struct ArmyController;
+pub struct ArmyController {
+    manager: AssignmentManager<crate::strong_types::Zealot, Mission, u64, usize>,
+}
 impl ArmyController {
     fn update_army_states(&self) {
         todo!()

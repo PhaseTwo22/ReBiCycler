@@ -24,6 +24,7 @@ pub mod protoss_bot;
 mod readout;
 mod scouting;
 mod siting;
+mod strong_types;
 
 pub const PYLON_POWER_RADIUS: f32 = 6.5;
 pub const PRISM_POWER_RADIUS: f32 = 3.75;
